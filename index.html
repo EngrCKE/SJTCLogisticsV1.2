@@ -1099,6 +1099,10 @@
       });
     }
 
+    alert(`Request created successfully.\n\nRequest ID: ${created.requestId}`);
+
+    isSavingRequest = false;
+    setRequestBusy(false);
     closeModal();
     await bootstrap();
   }
@@ -1142,11 +1146,21 @@
         }
       });
 
-      closeModal();
-      await bootstrap();
-    } finally {
+      let successMessage = "Request saved successfully.";
+      if(Status === "CONFIRMED") successMessage = "Request confirmed successfully.";
+      if(Status === "CANCELLED") successMessage = "Request marked as CANCELLED.";
+
+      alert(`${successMessage}\n\nRequest ID: ${currentRequest.RequestID}`);
+
       isSavingRequest = false;
       setRequestBusy(false);
+      closeModal();
+      await bootstrap();
+
+    } catch(err){
+      isSavingRequest = false;
+      setRequestBusy(false);
+      alert("Failed to save request.\n\n" + (err.message || err));
     }
   }
 
@@ -1199,11 +1213,17 @@
         overrides: { StartDT, EndDT, DriverCode, VehicleCode, Status }
       });
 
-      closeModal();
-      await bootstrap();
-    } finally {
+      alert(`Request duplicated successfully.\n\nSource Request ID: ${currentRequest.RequestID}`);
+
       isSavingRequest = false;
       setRequestBusy(false);
+      closeModal();
+      await bootstrap();
+
+    } catch(err){
+      isSavingRequest = false;
+      setRequestBusy(false);
+      alert("Failed to duplicate request.\n\n" + (err.message || err));
     }
   });
 
