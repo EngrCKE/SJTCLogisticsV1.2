@@ -1058,7 +1058,124 @@
   $("fStart").addEventListener("change", rebuildVehicleOptionsForSelectedDate);
   $("fType").addEventListener("change", ()=> buildTypeFields($("fType").value, {}));
 
-  async function createRequest(){
+async function createRequest(){
+  const Type = $("fType").value;
+  const RequestedBy = $("fRequestedBy").value.trim();
+  const StartDT = fromLocalInputValue($("fStart").value);
+  const EndDT = fromLocalInputValue($("fEnd").value);
+  const DriverCode = $("fDriver").value;
+  const VehicleCode = $("fVehicle").value;
+  const Payload = gatherPayload(Type);
+
+  const clientRequestId = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `ADMIN-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
+
+  const created = await api("createRequest", {
+    clientRequestId,
+    Type,
+    RequestedBy,
+    ViberUserID: "ADMIN-CREATED",
+    StartDT,
+    EndDT,
+    Payload
+  });
+
+  const status = $("fStatus").value;
+  if(DriverCode || VehicleCode || status !== "PENDING"){
+    await api("managerUpdate", {
+      pin,
+      requestId: created.requestId,
+      updates: {
+        Type,
+        RequestedBy,
+        StartDT,
+        EndDT,
+        DriverCode,
+        VehicleCode,
+        Status: status,
+        Payload
+      }
+    });
+  }
+
+  alert(`Request created successfully.\n\nRequest ID: ${created.requestId}`);
+  closeModal();
+  await bootstrap();
+}}
+
+async function saveRequest(nextStatus, mode){
+  if(isSavingRequest) return;
+  if(!validateRequestForm()) return;
+
+  try{
+    isSavingRequest = true;
+    setRequestBusy(true, mode);
+
+    if(isCreating){
+      await createRequest();
+      return;
+    }
+
+    if(!currentRequest) return;
+
+    const Type = $("fType").value;
+    const RequestedBy = $("fRequestedBy").value.trim();
+    const StartDT = fromLocalInputValue($("fStart").value);
+    const EndDT = fromLocalInputValue($("fEnd").value);
+    const DriverCode = $("fDriver").value;
+    const VehicleCode = $("fVehicle").value;
+    const Status = nextStatus || $("fStatus").value;
+    const Payload = gatherPayload(Type);
+
+    await api("managerUpdate", {
+      pin,
+      requestId: currentRequest.RequestID,
+      updates: {
+        Type,
+        RequestedBy,
+        StartDT,
+        EndDT,
+        DriverCode,
+        VehicleCode,
+        Status,
+        Payload
+      }
+    });
+
+    let successMessage = "Request saved successfully.";
+    if(Status === "CONFIRMED") successMessage = "Request confirmed successfully.";
+    if(Status === "CANCELLED") successMessage = "Request marked as CANCELLED.";
+
+    alert(`${successMessage}\n\nRequest ID: ${currentRequest.RequestID}`);
+    closeModal();
+    await bootstrap();
+
+  } finally {
+    isSavingRequest = false;
+    setRequestBusy(false);
+  }
+}
+
+  $("btnSave").addEventListener("click", ()=> saveRequest(null, "save"));
+  $("btnConfirm").addEventListener("click", ()=> saveRequest("CONFIRMED", "confirm"));
+  $("btnCancelReq").addEventListener("click", ()=> saveRequest("CANCELLED", "cancel"));
+
+ $("btnDuplicate").addEventListener("click", async ()=>{
+  if(isSavingRequest) return;
+  if(!validateRequestForm()) return;
+
+  if(isCreating){
+    alert("Create the request first before duplicating.");
+    return;
+  }
+
+  if(!currentRequest) return;
+
+  try{
+    isSavingRequest = true;
+    setRequestBusy(true, "duplicate");
+
     const Type = $("fType").value;
     const RequestedBy = $("fRequestedBy").value.trim();
     const StartDT = fromLocalInputValue($("fStart").value);
@@ -1066,146 +1183,38 @@
     const DriverCode = $("fDriver").value;
     const VehicleCode = $("fVehicle").value;
     const Payload = gatherPayload(Type);
+    const Status = confirm("Duplicate as CONFIRMED?\nOK = CONFIRMED, Cancel = PENDING") ? "CONFIRMED" : "PENDING";
 
-    const clientRequestId = (window.crypto && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `ADMIN-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
-
-    const created = await api("createRequest", {
-      clientRequestId,
-      Type,
-      RequestedBy,
-      ViberUserID: "ADMIN-CREATED",
-      StartDT,
-      EndDT,
-      Payload
+    await api("managerUpdate", {
+      pin,
+      requestId: currentRequest.RequestID,
+      updates: {
+        Type,
+        RequestedBy,
+        StartDT,
+        EndDT,
+        DriverCode,
+        VehicleCode,
+        Status: $("fStatus").value,
+        Payload
+      }
     });
 
-    const status = $("fStatus").value;
-    if(DriverCode || VehicleCode || status !== "PENDING"){
-      await api("managerUpdate", {
-        pin,
-        requestId: created.requestId,
-        updates: {
-          Type,
-          RequestedBy,
-          StartDT,
-          EndDT,
-          DriverCode,
-          VehicleCode,
-          Status: status,
-          Payload
-        }
-      });
-    }
+    const dup = await api("managerDuplicate", {
+      pin,
+      sourceRequestId: currentRequest.RequestID,
+      overrides: { StartDT, EndDT, DriverCode, VehicleCode, Status }
+    });
 
+    alert(`Request duplicated successfully.\n\nSource ID: ${currentRequest.RequestID}\nNew Request ID: ${dup.requestId || "(created)"}`);
     closeModal();
     await bootstrap();
+
+  } finally {
+    isSavingRequest = false;
+    setRequestBusy(false);
   }
-
-  async function saveRequest(nextStatus, mode){
-    if(isSavingRequest) return;
-    if(!validateRequestForm()) return;
-
-    try{
-      isSavingRequest = true;
-      setRequestBusy(true, mode);
-
-      if(isCreating){
-        await createRequest();
-        return;
-      }
-
-      if(!currentRequest) return;
-
-      const Type = $("fType").value;
-      const RequestedBy = $("fRequestedBy").value.trim();
-      const StartDT = fromLocalInputValue($("fStart").value);
-      const EndDT = fromLocalInputValue($("fEnd").value);
-      const DriverCode = $("fDriver").value;
-      const VehicleCode = $("fVehicle").value;
-      const Status = nextStatus || $("fStatus").value;
-      const Payload = gatherPayload(Type);
-
-      await api("managerUpdate", {
-        pin,
-        requestId: currentRequest.RequestID,
-        updates: {
-          Type,
-          RequestedBy,
-          StartDT,
-          EndDT,
-          DriverCode,
-          VehicleCode,
-          Status,
-          Payload
-        }
-      });
-
-      closeModal();
-      await bootstrap();
-    } finally {
-      isSavingRequest = false;
-      setRequestBusy(false);
-    }
-  }
-
-  $("btnSave").addEventListener("click", ()=> saveRequest(null, "save"));
-  $("btnConfirm").addEventListener("click", ()=> saveRequest("CONFIRMED", "confirm"));
-  $("btnCancelReq").addEventListener("click", ()=> saveRequest("CANCELLED", "cancel"));
-
-  $("btnDuplicate").addEventListener("click", async ()=>{
-    if(isSavingRequest) return;
-    if(!validateRequestForm()) return;
-
-    if(isCreating){
-      alert("Create the request first before duplicating.");
-      return;
-    }
-
-    if(!currentRequest) return;
-
-    try{
-      isSavingRequest = true;
-      setRequestBusy(true, "duplicate");
-
-      const Type = $("fType").value;
-      const RequestedBy = $("fRequestedBy").value.trim();
-      const StartDT = fromLocalInputValue($("fStart").value);
-      const EndDT = fromLocalInputValue($("fEnd").value);
-      const DriverCode = $("fDriver").value;
-      const VehicleCode = $("fVehicle").value;
-      const Payload = gatherPayload(Type);
-      const Status = confirm("Duplicate as CONFIRMED?\nOK = CONFIRMED, Cancel = PENDING") ? "CONFIRMED" : "PENDING";
-
-      await api("managerUpdate", {
-        pin,
-        requestId: currentRequest.RequestID,
-        updates: {
-          Type,
-          RequestedBy,
-          StartDT,
-          EndDT,
-          DriverCode,
-          VehicleCode,
-          Status: $("fStatus").value,
-          Payload
-        }
-      });
-
-      await api("managerDuplicate", {
-        pin,
-        sourceRequestId: currentRequest.RequestID,
-        overrides: { StartDT, EndDT, DriverCode, VehicleCode, Status }
-      });
-
-      closeModal();
-      await bootstrap();
-    } finally {
-      isSavingRequest = false;
-      setRequestBusy(false);
-    }
-  });
+});
 
   bootstrap().catch(e=>{
     console.error("Bootstrap failed:", e);
