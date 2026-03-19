@@ -470,8 +470,15 @@
   let isSavingRequest = false;
 
   const pad2 = n => String(n).padStart(2,"0");
-  const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-  const nice = d => d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+const nice = d => d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+
+function localDateKeyFromISO(iso){
+  if(!iso) return "";
+  const d = new Date(iso);
+  if(Number.isNaN(d.getTime())) return "";
+  return ymd(d);
+}
 
   function startOfWeekMonday(date){
     const d = new Date(date.getFullYear(),date.getMonth(),date.getDate());
@@ -625,10 +632,9 @@
     const byDay = {};
     for(const d of dates) byDay[ymd(d)] = [];
 
-    const filtered = applyFilters(requests);
     for(const r of filtered){
-      const key = String(r.StartDT||"").slice(0,10);
-      if(byDay[key]) byDay[key].push(r);
+  const key = localDateKeyFromISO(r.StartDT);
+  if(byDay[key]) byDay[key].push(r);
     }
 
     wrap.innerHTML = `<div class="grid" id="calGrid"></div>`;
