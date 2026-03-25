@@ -443,6 +443,12 @@
         </div>
       </div>
 
+      <div>
+        <label>Installers (Admin only)</label>
+        <select id="fInstallers" multiple size="6"></select>
+        <div class="hint">Hold Ctrl or Cmd to select multiple installers.</div>
+      </div>
+
       <div id="typeFields"></div>
     </div>
 
@@ -634,6 +640,7 @@
           <span class="pill">🕒 ${st.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}–${en.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}</span>
           <span class="pill">👤 ${escapeHtml(r.DriverCode||"—")}</span>
           <span class="pill">🚚 ${escapeHtml(r.VehicleCode||"—")}</span>
+          ${installerLabelFromPayload(r.Payload) ? `<span class="pill">🧰 ${escapeHtml(installerLabelFromPayload(r.Payload))}</span>` : ""}
         </div>
       </div>
     `;
@@ -785,6 +792,7 @@
       BOOT.vehicles.map(v=>`<option value="${escapeAttr(v.VehicleCode)}">${escapeHtml(v.VehicleCode)} — ${escapeHtml(v.VehicleLabel)}</option>`).join("");
 
     buildDriverSelect();
+    buildInstallerSelect();
   }
 
   function buildDriverSelect(){
@@ -794,6 +802,43 @@
         .filter(d=>String(d.Active||"Y").toUpperCase()==="Y")
         .map(d=>`<option value="${escapeAttr(d.DriverCode)}">${escapeHtml(d.DriverCode)} — ${escapeHtml(d.DriverName)}</option>`)
         .join("");
+  }
+
+  function buildInstallerSelect(){
+    const installers = (BOOT && BOOT.installers ? BOOT.installers : []).filter(x=>String(x.Active||"Y").toUpperCase()==="Y");
+    $("fInstallers").innerHTML = installers.length
+      ? installers.map(x=>`<option value="${escapeAttr(x.InstallerCode)}">${escapeHtml(x.InstallerCode)} — ${escapeHtml(x.InstallerName)}${x.ContactNumber ? " • " + escapeHtml(x.ContactNumber) : ""}</option>`).join("")
+      : `<option value="" disabled>No installers configured</option>`;
+  }
+
+  function selectedInstallerCodes(){
+    return Array.from($("fInstallers").selectedOptions || []).map(o=>o.value).filter(Boolean);
+  }
+
+  function selectInstallerCodes(codes){
+    const wanted = new Set((codes||[]).map(String));
+    Array.from($("fInstallers").options || []).forEach(opt=>{
+      opt.selected = wanted.has(String(opt.value));
+    });
+  }
+
+  function selectedInstallerObjects(){
+    const codes = selectedInstallerCodes();
+    const installers = (BOOT && BOOT.installers ? BOOT.installers : []);
+    return codes.map(code=>{
+      const hit = installers.find(x=>String(x.InstallerCode)===String(code)) || {};
+      return {
+        InstallerCode: code,
+        InstallerName: hit.InstallerName || code,
+        ContactNumber: hit.ContactNumber || ""
+      };
+    });
+  }
+
+  function installerLabelFromPayload(payload){
+    const arr = Array.isArray(payload && payload.Installers) ? payload.Installers : [];
+    if(!arr.length) return "";
+    return arr.map(x=>x && (x.InstallerName || x.InstallerCode || "")).filter(Boolean).join(", ");
   }
 
   function rebuildVehicleOptionsForSelectedDate(){
@@ -944,7 +989,9 @@
         ContactNumber: $("pContact") ? $("pContact").value.trim() : "",
         Address: $("pAddr") ? $("pAddr").value.trim() : "",
         Items: $("pItems") ? $("pItems").value.trim() : "",
-        Notes: $("pNotes") ? $("pNotes").value.trim() : ""
+        Notes: $("pNotes") ? $("pNotes").value.trim() : "",
+        InstallerCodes: selectedInstallerCodes(),
+        Installers: selectedInstallerObjects()
       };
     }
 
@@ -952,7 +999,9 @@
       return {
         ClientName: $("pClient") ? $("pClient").value.trim() : "",
         Destination: $("pDestination") ? $("pDestination").value.trim() : "",
-        Notes: $("pNotes") ? $("pNotes").value.trim() : ""
+        Notes: $("pNotes") ? $("pNotes").value.trim() : "",
+        InstallerCodes: selectedInstallerCodes(),
+        Installers: selectedInstallerObjects()
       };
     }
 
@@ -960,7 +1009,9 @@
       Destination: $("pDestination") ? $("pDestination").value.trim() : "",
       Purpose: $("pPurpose") ? $("pPurpose").value.trim() : "",
       RequiredVehicle: $("pRequiredVehicle") ? $("pRequiredVehicle").value.trim() : "",
-      Notes: $("pNotes") ? $("pNotes").value.trim() : ""
+      Notes: $("pNotes") ? $("pNotes").value.trim() : "",
+      InstallerCodes: selectedInstallerCodes(),
+      Installers: selectedInstallerObjects()
     };
   }
 
@@ -1036,6 +1087,7 @@
 
     rebuildVehicleOptionsForSelectedDate();
     $("fVehicle").value = "";
+    selectInstallerCodes([]);
 
     buildTypeFields("Delivery", {});
     setRequestBusy(false);
@@ -1061,6 +1113,7 @@
 
     rebuildVehicleOptionsForSelectedDate();
     $("fVehicle").value = currentRequest.VehicleCode || "";
+    selectInstallerCodes(currentRequest.InstallerCodes || ((currentRequest.Payload && currentRequest.Payload.InstallerCodes) || []).map(String));
 
     buildTypeFields(currentRequest.Type, currentRequest.Payload || {});
     setRequestBusy(false);
