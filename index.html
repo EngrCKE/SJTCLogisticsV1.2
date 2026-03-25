@@ -627,7 +627,8 @@
 
     const filtered = applyFilters(requests);
     for(const r of filtered){
-      const key = String(r.StartDT||"").slice(0,10);
+      const dt = new Date(r.StartDT);
+      const key = ymd(dt);
       if(byDay[key]) byDay[key].push(r);
     }
 
