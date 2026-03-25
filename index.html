@@ -498,6 +498,26 @@
     return d.toISOString();
   }
 
+  function addHoursLocal(date, hours){
+    const x = new Date(date);
+    x.setHours(x.getHours() + hours);
+    return x;
+  }
+
+  function getStartEndISOFromForm(){
+    const startRaw = $("fStart").value;
+    const endRaw = $("fEnd").value;
+
+    const start = new Date(startRaw);
+    const end = endRaw ? new Date(endRaw) : addHoursLocal(start, 4);
+
+    return {
+      StartDT: start.toISOString(),
+      EndDT: end.toISOString(),
+      endLocalInput: toLocalInputValue(end.toISOString())
+    };
+  }
+
   function windowDates(){
     const anchor = startOfWeekMonday(new Date());
     const start = addDays(anchor, offsetWeeks*7);
@@ -627,8 +647,7 @@
 
     const filtered = applyFilters(requests);
     for(const r of filtered){
-      const dt = new Date(r.StartDT);
-      const key = ymd(dt);
+      const key = String(r.StartDT||"").slice(0,10);
       if(byDay[key]) byDay[key].push(r);
     }
 
@@ -972,22 +991,23 @@
       return false;
     }
 
-    if(!endRaw){
-      alert("End date/time is required.");
-      return false;
-    }
-
     const start = new Date(startRaw);
-    const end = new Date(endRaw);
-
-    if(Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())){
-      alert("Invalid date/time.");
+    if(Number.isNaN(start.getTime())){
+      alert("Invalid start date/time.");
       return false;
     }
 
-    if(end <= start){
-      alert("End date/time must be later than start date/time.");
-      return false;
+    if(endRaw){
+      const end = new Date(endRaw);
+      if(Number.isNaN(end.getTime())){
+        alert("Invalid end date/time.");
+        return false;
+      }
+
+      if(end <= start){
+        alert("End date/time must be later than start date/time.");
+        return false;
+      }
     }
 
     return true;
@@ -1056,14 +1076,22 @@
   $("btnClose").addEventListener("click", closeModal);
   $("modalBg").addEventListener("click", e=>{ if(e.target===$("modalBg")) closeModal(); });
 
-  $("fStart").addEventListener("change", rebuildVehicleOptionsForSelectedDate);
+  $("fStart").addEventListener("change", ()=>{
+    rebuildVehicleOptionsForSelectedDate();
+
+    if(!$("fEnd").value && $("fStart").value){
+      const start = new Date($("fStart").value);
+      const end = addHoursLocal(start, 4);
+      $("fEnd").value = toLocalInputValue(end.toISOString());
+    }
+  });
   $("fType").addEventListener("change", ()=> buildTypeFields($("fType").value, {}));
 
   async function createRequest(){
     const Type = $("fType").value;
     const RequestedBy = $("fRequestedBy").value.trim();
-    const StartDT = fromLocalInputValue($("fStart").value);
-    const EndDT = fromLocalInputValue($("fEnd").value);
+    const { StartDT, EndDT, endLocalInput } = getStartEndISOFromForm();
+    if(!$("fEnd").value) $("fEnd").value = endLocalInput;
     const DriverCode = $("fDriver").value;
     const VehicleCode = $("fVehicle").value;
     const Payload = gatherPayload(Type);
@@ -1125,8 +1153,8 @@
 
       const Type = $("fType").value;
       const RequestedBy = $("fRequestedBy").value.trim();
-      const StartDT = fromLocalInputValue($("fStart").value);
-      const EndDT = fromLocalInputValue($("fEnd").value);
+      const { StartDT, EndDT, endLocalInput } = getStartEndISOFromForm();
+      if(!$("fEnd").value) $("fEnd").value = endLocalInput;
       const DriverCode = $("fDriver").value;
       const VehicleCode = $("fVehicle").value;
       const Status = nextStatus || $("fStatus").value;
@@ -1186,8 +1214,8 @@
 
       const Type = $("fType").value;
       const RequestedBy = $("fRequestedBy").value.trim();
-      const StartDT = fromLocalInputValue($("fStart").value);
-      const EndDT = fromLocalInputValue($("fEnd").value);
+      const { StartDT, EndDT, endLocalInput } = getStartEndISOFromForm();
+      if(!$("fEnd").value) $("fEnd").value = endLocalInput;
       const DriverCode = $("fDriver").value;
       const VehicleCode = $("fVehicle").value;
       const Payload = gatherPayload(Type);
