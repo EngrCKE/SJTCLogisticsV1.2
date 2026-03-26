@@ -842,7 +842,7 @@
     const k = String(code||"").trim();
     if(!k) return;
     if(selectedInstallerState.some(x=>String(x.InstallerCode)===k)){
-      if($("fInstallerPicker")) $("fInstallerPicker").value = "";
+      $("fInstallerPicker").value = "";
       return;
     }
 
@@ -853,7 +853,7 @@
       ContactNumber: String(hit.ContactNumber || "")
     });
 
-    if($("fInstallerPicker")) $("fInstallerPicker").value = "";
+    $("fInstallerPicker").value = "";
     renderInstallerBox();
   }
 
@@ -887,6 +887,21 @@
       InstallerName: x.InstallerName || x.InstallerCode,
       ContactNumber: x.ContactNumber || ""
     }));
+  }
+
+  function hydrateInstallerPickerFromPayload(payload){
+    buildInstallerSelect();
+    const picker = $("fInstallerPicker");
+    if(picker){
+      picker.onchange = ()=>{
+        const code = picker.value;
+        if(code) addInstallerCode(code);
+      };
+    }
+
+    const arr = Array.isArray(payload && payload.Installers) ? payload.Installers : [];
+    const codes = arr.map(x=> x && (x.InstallerCode || x.code || x)).filter(Boolean);
+    selectInstallerCodes(codes);
   }
 
   function installerLabelFromPayload(payload){
@@ -958,10 +973,6 @@
   });
 
   $("q").addEventListener("input", ()=> renderAll());
-  $("fInstallerPicker").addEventListener("change", ()=>{
-    const code = $("fInstallerPicker").value;
-    if(code) addInstallerCode(code);
-  });
 
 
   function openPinModal(){
@@ -985,19 +996,6 @@
     await bootstrap();
   });
 
-  function installerSectionHTML(){
-    return `
-      <div style="margin-top:10px">
-        <label>Installers (Admin only)</label>
-        <div class="panel" style="padding:10px;margin-top:6px;background:rgba(255,255,255,.03)">
-          <select id="fInstallerPicker" style="width:100%"></select>
-          <div id="installerBox" class="line" style="margin-top:10px;gap:8px;flex-wrap:wrap;min-height:44px;padding:10px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(15,46,34,.45)"></div>
-          <div class="hint" style="margin-top:8px">Choose an installer from the dropdown. Click × to remove.</div>
-        </div>
-      </div>
-    `;
-  }
-
   function buildTypeFields(type, payload){
     const wrap = $("typeFields");
     const p = payload || {};
@@ -1011,10 +1009,15 @@
           <div><label>Items</label><input id="pItems" value="${escapeAttr(p.Items||"")}" /></div>
         </div>
         <div><label>Address</label><input id="pAddr" value="${escapeAttr(p.Address||"")}" /></div>
-        ${installerSectionHTML()}
-        <div><label>Notes / Special Instructions</label><textarea id="pNotes" placeholder="Special instructions (optional)">${escapeHtml(p.Notes||"")}</textarea></div>
+        <div>
+          <label>Installers (Admin only)</label>
+          <select id="fInstallerPicker" style="width:100%"></select>
+          <div id="installerBox" class="line" style="margin-top:8px;gap:8px;flex-wrap:wrap;min-height:42px;padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04)"></div>
+          <div class="hint" style="margin-top:6px">Choose an installer from the dropdown. Click × to remove.</div>
+        </div>
+        <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
       `;
-      buildInstallerSelect();
+      hydrateInstallerPickerFromPayload(p);
       return;
     }
 
@@ -1024,10 +1027,15 @@
           <div><label>Client Name</label><input id="pClient" value="${escapeAttr(p.ClientName||"")}" /></div>
           <div><label>Destination</label><input id="pDestination" value="${escapeAttr(p.Destination||"")}" /></div>
         </div>
-        ${installerSectionHTML()}
-        <div><label>Notes / Special Instructions</label><textarea id="pNotes" placeholder="Special instructions (optional)">${escapeHtml(p.Notes||"")}</textarea></div>
+        <div>
+          <label>Installers (Admin only)</label>
+          <select id="fInstallerPicker" style="width:100%"></select>
+          <div id="installerBox" class="line" style="margin-top:8px;gap:8px;flex-wrap:wrap;min-height:42px;padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04)"></div>
+          <div class="hint" style="margin-top:6px">Choose an installer from the dropdown. Click × to remove.</div>
+        </div>
+        <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
       `;
-      buildInstallerSelect();
+      hydrateInstallerPickerFromPayload(p);
       return;
     }
 
@@ -1053,10 +1061,8 @@
           </select>
         </div>
       </div>
-      ${installerSectionHTML()}
-      <div><label>Notes / Special Instructions</label><textarea id="pNotes" placeholder="Special instructions (optional)">${escapeHtml(p.Notes||"")}</textarea></div>
+      <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
     `;
-    buildInstallerSelect();
   }
 
   function gatherPayload(type){
