@@ -443,16 +443,6 @@
         </div>
       </div>
 
-      <div>
-        <label>Installers (Admin only)</label>
-        <div class="line" style="gap:8px;align-items:flex-start;flex-wrap:wrap">
-          <select id="fInstallerPicker" style="min-width:260px;flex:1 1 260px"></select>
-          <button type="button" id="btnAddInstaller">Add</button>
-        </div>
-        <div id="installerBox" class="line" style="margin-top:8px;gap:8px;flex-wrap:wrap;min-height:38px;padding:8px;border:1px solid #2b4d40;border-radius:12px;background:#102b21"></div>
-        <div class="hint">Choose an installer from the dropdown, then click Add. Click × to remove.</div>
-      </div>
-
       <div id="typeFields"></div>
     </div>
 
@@ -852,7 +842,7 @@
     const k = String(code||"").trim();
     if(!k) return;
     if(selectedInstallerState.some(x=>String(x.InstallerCode)===k)){
-      $("fInstallerPicker").value = "";
+      if($("fInstallerPicker")) $("fInstallerPicker").value = "";
       return;
     }
 
@@ -863,7 +853,7 @@
       ContactNumber: String(hit.ContactNumber || "")
     });
 
-    $("fInstallerPicker").value = "";
+    if($("fInstallerPicker")) $("fInstallerPicker").value = "";
     renderInstallerBox();
   }
 
@@ -968,10 +958,6 @@
   });
 
   $("q").addEventListener("input", ()=> renderAll());
-  $("btnAddInstaller").addEventListener("click", ()=>{
-    addInstallerCode($("fInstallerPicker").value);
-  });
-
   $("fInstallerPicker").addEventListener("change", ()=>{
     const code = $("fInstallerPicker").value;
     if(code) addInstallerCode(code);
@@ -999,6 +985,19 @@
     await bootstrap();
   });
 
+  function installerSectionHTML(){
+    return `
+      <div style="margin-top:10px">
+        <label>Installers (Admin only)</label>
+        <div class="panel" style="padding:10px;margin-top:6px;background:rgba(255,255,255,.03)">
+          <select id="fInstallerPicker" style="width:100%"></select>
+          <div id="installerBox" class="line" style="margin-top:10px;gap:8px;flex-wrap:wrap;min-height:44px;padding:10px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(15,46,34,.45)"></div>
+          <div class="hint" style="margin-top:8px">Choose an installer from the dropdown. Click × to remove.</div>
+        </div>
+      </div>
+    `;
+  }
+
   function buildTypeFields(type, payload){
     const wrap = $("typeFields");
     const p = payload || {};
@@ -1012,8 +1011,10 @@
           <div><label>Items</label><input id="pItems" value="${escapeAttr(p.Items||"")}" /></div>
         </div>
         <div><label>Address</label><input id="pAddr" value="${escapeAttr(p.Address||"")}" /></div>
-        <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
+        ${installerSectionHTML()}
+        <div><label>Notes / Special Instructions</label><textarea id="pNotes" placeholder="Special instructions (optional)">${escapeHtml(p.Notes||"")}</textarea></div>
       `;
+      buildInstallerSelect();
       return;
     }
 
@@ -1023,8 +1024,10 @@
           <div><label>Client Name</label><input id="pClient" value="${escapeAttr(p.ClientName||"")}" /></div>
           <div><label>Destination</label><input id="pDestination" value="${escapeAttr(p.Destination||"")}" /></div>
         </div>
-        <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
+        ${installerSectionHTML()}
+        <div><label>Notes / Special Instructions</label><textarea id="pNotes" placeholder="Special instructions (optional)">${escapeHtml(p.Notes||"")}</textarea></div>
       `;
+      buildInstallerSelect();
       return;
     }
 
@@ -1050,8 +1053,10 @@
           </select>
         </div>
       </div>
-      <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
+      ${installerSectionHTML()}
+      <div><label>Notes / Special Instructions</label><textarea id="pNotes" placeholder="Special instructions (optional)">${escapeHtml(p.Notes||"")}</textarea></div>
     `;
+    buildInstallerSelect();
   }
 
   function gatherPayload(type){
