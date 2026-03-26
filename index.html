@@ -443,6 +443,17 @@
         </div>
       </div>
 
+      <div id="installerDefaultHost"></div>
+      <div id="installerSectionWrap">
+        <label>Installers (Admin only)</label>
+        <div class="line" style="gap:8px;align-items:flex-start;flex-wrap:wrap">
+          <select id="fInstallerPicker" style="min-width:260px;flex:1 1 260px"></select>
+          <button type="button" id="btnAddInstaller">Add</button>
+        </div>
+        <div id="installerBox" class="line" style="margin-top:8px;gap:8px;flex-wrap:wrap;min-height:38px;padding:8px;border:1px solid #2b4d40;border-radius:12px;background:#102b21"></div>
+        <div class="hint">Choose an installer from the dropdown, then click Add. Click × to remove.</div>
+      </div>
+
       <div id="typeFields"></div>
     </div>
 
@@ -799,6 +810,20 @@
         .join("");
   }
 
+
+  function positionInstallerSection(type){
+    const wrap = $("installerSectionWrap");
+    const serviceMount = $("installerServiceMount");
+    const defaultHost = $("installerDefaultHost");
+    if(!wrap || !defaultHost) return;
+
+    if(type === "Service" && serviceMount){
+      serviceMount.replaceWith(wrap);
+    } else {
+      defaultHost.after(wrap);
+    }
+  }
+
   function activeInstallers(){
     return (BOOT && BOOT.installers ? BOOT.installers : []).filter(x=>String(x.Active||"Y").toUpperCase()==="Y");
   }
@@ -889,21 +914,6 @@
     }));
   }
 
-  function hydrateInstallerPickerFromPayload(payload){
-    buildInstallerSelect();
-    const picker = $("fInstallerPicker");
-    if(picker){
-      picker.onchange = ()=>{
-        const code = picker.value;
-        if(code) addInstallerCode(code);
-      };
-    }
-
-    const arr = Array.isArray(payload && payload.Installers) ? payload.Installers : [];
-    const codes = arr.map(x=> x && (x.InstallerCode || x.code || x)).filter(Boolean);
-    selectInstallerCodes(codes);
-  }
-
   function installerLabelFromPayload(payload){
     const arr = Array.isArray(payload && payload.Installers) ? payload.Installers : [];
     if(!arr.length) return "";
@@ -973,6 +983,14 @@
   });
 
   $("q").addEventListener("input", ()=> renderAll());
+  $("btnAddInstaller").addEventListener("click", ()=>{
+    addInstallerCode($("fInstallerPicker").value);
+  });
+
+  $("fInstallerPicker").addEventListener("change", ()=>{
+    const code = $("fInstallerPicker").value;
+    if(code) addInstallerCode(code);
+  });
 
 
   function openPinModal(){
@@ -1009,15 +1027,9 @@
           <div><label>Items</label><input id="pItems" value="${escapeAttr(p.Items||"")}" /></div>
         </div>
         <div><label>Address</label><input id="pAddr" value="${escapeAttr(p.Address||"")}" /></div>
-        <div>
-          <label>Installers (Admin only)</label>
-          <select id="fInstallerPicker" style="width:100%"></select>
-          <div id="installerBox" class="line" style="margin-top:8px;gap:8px;flex-wrap:wrap;min-height:42px;padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04)"></div>
-          <div class="hint" style="margin-top:6px">Choose an installer from the dropdown. Click × to remove.</div>
-        </div>
         <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
       `;
-      hydrateInstallerPickerFromPayload(p);
+      positionInstallerSection(type);
       return;
     }
 
@@ -1027,20 +1039,15 @@
           <div><label>Client Name</label><input id="pClient" value="${escapeAttr(p.ClientName||"")}" /></div>
           <div><label>Destination</label><input id="pDestination" value="${escapeAttr(p.Destination||"")}" /></div>
         </div>
-        <div>
-          <label>Installers (Admin only)</label>
-          <select id="fInstallerPicker" style="width:100%"></select>
-          <div id="installerBox" class="line" style="margin-top:8px;gap:8px;flex-wrap:wrap;min-height:42px;padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04)"></div>
-          <div class="hint" style="margin-top:6px">Choose an installer from the dropdown. Click × to remove.</div>
-        </div>
         <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
       `;
-      hydrateInstallerPickerFromPayload(p);
+      positionInstallerSection(type);
       return;
     }
 
     wrap.innerHTML = `
       <div class="twoCol">
+        <div><label>Client Name (optional)</label><input id="pClient" value="${escapeAttr(p.ClientName||"")}" /></div>
         <div><label>Destination</label><input id="pDestination" value="${escapeAttr(p.Destination||"")}" /></div>
         <div>
           <label>Purpose</label>
@@ -1061,8 +1068,10 @@
           </select>
         </div>
       </div>
+      <div id="installerServiceMount"></div>
       <div><label>Notes</label><textarea id="pNotes">${escapeHtml(p.Notes||"")}</textarea></div>
     `;
+    positionInstallerSection(type);
   }
 
   function gatherPayload(type){
@@ -1090,6 +1099,7 @@
     }
 
     return {
+      ClientName: $("pClient") ? $("pClient").value.trim() : "",
       Destination: $("pDestination") ? $("pDestination").value.trim() : "",
       Purpose: $("pPurpose") ? $("pPurpose").value.trim() : "",
       RequiredVehicle: $("pRequiredVehicle") ? $("pRequiredVehicle").value.trim() : "",
