@@ -90,14 +90,16 @@
     .tab{
       padding:8px 10px;
       border-radius:999px;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.05);
+      border:1px solid rgba(63,174,115,.38);
+      background:rgba(63,174,115,.12);
+      color:var(--txt);
       cursor:pointer;
     }
 
     .tab.active{
-      border-color:rgba(63,174,115,.7);
-      background:rgba(63,174,115,.15);
+      border-color:rgba(63,174,115,.58);
+      background:rgba(63,174,115,.18);
+      color:var(--txt);
     }
 
     .panel{
@@ -144,6 +146,17 @@
     .day.today .dayHead .s,
     .day.today .hint{
       color:#4d4636;
+    }
+
+    .day.today .card{
+      background:rgba(15,46,34,.62);
+      border-color:rgba(15,46,34,.38);
+    }
+
+    .day.today .compactMain,
+    .day.today .compactMeta,
+    .day.today .pill{
+      color:var(--txt);
     }
 
     .dayHead{
@@ -491,7 +504,7 @@
           <label>Type</label>
           <select id="fType">
             <option>Delivery</option>
-            <option>Travel</option>
+            <option>Client Call</option>
             <option>Service</option>
           </select>
         </div>
@@ -646,10 +659,20 @@
     return escapeHtml(str).replace(/"/g,"&quot;");
   }
 
+  function displayType(type){
+    return type === "Travel" || type === "Client Call" ? "Client Call" : (type || "");
+  }
+
+  function typeEmoji(type){
+    if(type === "Delivery") return "📦";
+    if(type === "Travel" || type === "Client Call") return "📞";
+    return "🛠️";
+  }
+
   function pillForStatus(s){
-    if(s==="CONFIRMED") return `<span class="pill ok">CONFIRMED</span>`;
-    if(s==="PENDING") return `<span class="pill warn">PENDING</span>`;
-    return `<span class="pill bad">CANCELLED</span>`;
+    if(s==="CONFIRMED") return `<span class="pill ok">✅</span>`;
+    if(s==="PENDING") return `<span class="pill warn">⏳</span>`;
+    return `<span class="pill bad">❌</span>`;
   }
 
   function isScheduled(r){
@@ -658,8 +681,8 @@
 
   function pillForScheduled(r){
     return isScheduled(r)
-      ? `<span class="pill info">SCHEDULED</span>`
-      : `<span class="pill">UNSCHEDULED</span>`;
+      ? `<span class="pill info">📅</span>`
+      : `<span class="pill">📝</span>`;
   }
 
   function normalizeSearch(s){ return String(s||"").toLowerCase(); }
@@ -698,14 +721,14 @@
   function requestTitle(r){
     const p = r.Payload || {};
     if(r.Type==="Delivery") return `${p.SONumber || "SO ?"} • ${p.ClientName || ""}`.trim();
-    if(r.Type==="Travel") return `${p.ClientName || ""} • ${p.Destination || ""}`.trim();
+    if(r.Type==="Travel" || r.Type==="Client Call") return `${p.ClientName || ""} • ${p.Destination || ""}`.trim();
     return `${p.Purpose || "Service"}${p.ClientName ? " • " + p.ClientName : ""}${p.Destination ? " • " + p.Destination : ""}`.trim();
   }
 
   function requestSubtitle(r){
     const p = r.Payload || {};
     if(r.Type==="Delivery") return `${p.Address || ""}`.trim();
-    if(r.Type==="Travel") return `${p.Destination || ""}`.trim();
+    if(r.Type==="Travel" || r.Type==="Client Call") return `${p.Destination || ""}`.trim();
     return `${p.RequiredVehicle ? ("Vehicle: " + p.RequiredVehicle + " • ") : ""}${p.ClientName ? (p.ClientName + (p.Destination ? " • " : "")) : ""}${p.Destination || ""}`.trim();
   }
 
@@ -716,10 +739,10 @@
   function cardMainLine(r){
     const p = r.Payload || {};
     if(r.Type==="Delivery"){
-      return [p.SONumber, p.ClientName, p.Address].map(shortText).filter(Boolean).map(escapeHtml).map(x=>`<b>${x}</b>`).join(" • ") || `<b>${escapeHtml(r.Type)}</b>`;
+      return [p.SONumber, p.ClientName, p.Address].map(shortText).filter(Boolean).map(escapeHtml).map(x=>`<b>${x}</b>`).join(" • ") || `<b>${escapeHtml(displayType(r.Type))}</b>`;
     }
-    if(r.Type==="Travel"){
-      return [p.ClientName, p.Destination].map(shortText).filter(Boolean).map(escapeHtml).map(x=>`<b>${x}</b>`).join(" • ") || `<b>Travel</b>`;
+    if(r.Type==="Travel" || r.Type==="Client Call"){
+      return [p.ClientName, p.Destination].map(shortText).filter(Boolean).map(escapeHtml).map(x=>`<b>${x}</b>`).join(" • ") || `<b>Client Call</b>`;
     }
     return [p.ClientName, p.Destination, p.Purpose].map(shortText).filter(Boolean).map(escapeHtml).map(x=>`<b>${x}</b>`).join(" • ") || `<b>Service</b>`;
   }
@@ -738,7 +761,7 @@
     const p = payload || r.Payload || {};
     const items = [];
     if(r.Type === "Delivery") items.push(["SO#", p.SONumber || "—"]);
-    if(p.ClientName || r.Type !== "Travel") items.push(["Client Name", p.ClientName || "—"]);
+    if(p.ClientName || r.Type !== "Travel" && r.Type !== "Client Call") items.push(["Client Name", p.ClientName || "—"]);
     items.push(["Address", p.Address || p.Destination || "—"]);
     if(p.ContactNumber || r.Type === "Delivery") items.push(["Contact Number", p.ContactNumber || "—"]);
     items.push(["Vehicle", r.VehicleCode || "—"]);
@@ -856,18 +879,18 @@
   }
 
   function cardHTML(r){
-    const p = r.Payload || {};
     return `
       <div class="card click" data-open="${escapeAttr(r.RequestID)}">
-        <div class="line" style="justify-content:space-between;align-items:flex-start">
-          <span class="pill info">${escapeHtml(r.Type)}</span>
-          <div class="line">${pillForScheduled(r)} ${pillForStatus(r.Status)}</div>
-        </div>
         <div class="compactMain">${cardMainLine(r)}</div>
+        <div class="line" style="gap:6px;flex-wrap:wrap">
+          <span class="pill info">${typeEmoji(r.Type)}</span>
+          ${pillForScheduled(r)}
+          ${pillForStatus(r.Status)}
+        </div>
         <div class="compactMeta">
-          <span><b>Time:</b> ${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</span>
-          <span><b>Driver:</b> ${escapeHtml(r.DriverCode||"—")}</span>
-          <span><b>Vehicle:</b> ${escapeHtml(r.VehicleCode||"—")}</span>
+          <span>🕒 ${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</span>
+          <span>👤 ${escapeHtml(r.DriverCode||"—")}</span>
+          <span>🚚 ${escapeHtml(r.VehicleCode||"—")}</span>
         </div>
       </div>
     `;
@@ -926,7 +949,7 @@
       return `
         <tr class="click" data-open="${escapeAttr(r.RequestID)}">
           <td><b>${escapeHtml(r.RequestID)}</b><div class="small">${pillForScheduled(r)} ${pillForStatus(r.Status)}</div></td>
-          <td>${escapeHtml(r.Type)}</td>
+          <td>${escapeHtml(displayType(r.Type))}</td>
           <td>${escapeHtml(requestTitle(r))}</td>
           <td>${st.toLocaleString()}</td>
           <td>${escapeHtml(r.DriverCode||"")}</td>
@@ -1294,7 +1317,7 @@
       return;
     }
 
-    if(type==="Travel"){
+    if(type==="Travel" || type==="Client Call"){
       wrap.innerHTML = `
         <div class="twoCol">
           <div><label>Client Name</label><input id="pClient" value="${escapeAttr(p.ClientName||"")}" /></div>
@@ -1362,7 +1385,7 @@
       };
     }
 
-    if(type==="Travel"){
+    if(type==="Travel" || type==="Client Call"){
       return {
         ClientName: $("pClient") ? $("pClient").value.trim() : "",
         Destination: $("pDestination") ? $("pDestination").value.trim() : "",
