@@ -445,8 +445,12 @@
 
       <div>
         <label>Installers (Admin only)</label>
-        <select id="fInstallers" multiple size="6"></select>
-        <div class="hint">Hold Ctrl or Cmd to select multiple installers.</div>
+        <div class="line" style="gap:8px;align-items:flex-start;flex-wrap:wrap">
+          <select id="fInstallerPicker" style="min-width:260px;flex:1 1 260px"></select>
+          <button type="button" id="btnAddInstaller">Add</button>
+        </div>
+        <div id="installerBox" class="line" style="margin-top:8px;gap:8px;flex-wrap:wrap;min-height:38px;padding:8px;border:1px solid #2b4d40;border-radius:12px;background:#102b21"></div>
+        <div class="hint">Choose an installer from the dropdown, then click Add. Click × to remove.</div>
       </div>
 
       <div id="typeFields"></div>
@@ -474,6 +478,7 @@
   let currentRequest = null;
   let isCreating = false;
   let isSavingRequest = false;
+  let selectedInstallerState = [];
 
   const pad2 = n => String(n).padStart(2,"0");
   const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
@@ -804,35 +809,94 @@
         .join("");
   }
 
+  function activeInstallers(){
+    return (BOOT && BOOT.installers ? BOOT.installers : []).filter(x=>String(x.Active||"Y").toUpperCase()==="Y");
+  }
+
+  function installerByCode(code){
+    return activeInstallers().find(x=>String(x.InstallerCode)===String(code)) || null;
+  }
+
+  function renderInstallerBox(){
+    const box = $("installerBox");
+    if(!box) return;
+
+    if(!selectedInstallerState.length){
+      box.innerHTML = `<span class="hint">No installers selected.</span>`;
+      return;
+    }
+
+    box.innerHTML = selectedInstallerState.map(x=>{
+      const label = `${x.InstallerCode} — ${x.InstallerName || x.InstallerCode}${x.ContactNumber ? " • " + x.ContactNumber : ""}`;
+      return `<span class="pill" style="display:inline-flex;align-items:center;gap:8px;padding-right:8px">🧰 ${escapeHtml(label)} <button type="button" data-remove-installer="${escapeAttr(x.InstallerCode)}" style="border:none;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:0 2px">×</button></span>`;
+    }).join("");
+
+    box.querySelectorAll("[data-remove-installer]").forEach(btn=>{
+      btn.addEventListener("click", ()=> removeInstallerCode(btn.dataset.removeInstaller));
+    });
+  }
+
   function buildInstallerSelect(){
-    const installers = (BOOT && BOOT.installers ? BOOT.installers : []).filter(x=>String(x.Active||"Y").toUpperCase()==="Y");
-    $("fInstallers").innerHTML = installers.length
-      ? installers.map(x=>`<option value="${escapeAttr(x.InstallerCode)}">${escapeHtml(x.InstallerCode)} — ${escapeHtml(x.InstallerName)}${x.ContactNumber ? " • " + escapeHtml(x.ContactNumber) : ""}</option>`).join("")
-      : `<option value="" disabled>No installers configured</option>`;
+    const installers = activeInstallers();
+    const picker = $("fInstallerPicker");
+    if(!picker) return;
+
+    picker.innerHTML = installers.length
+      ? `<option value="">Select installer</option>` + installers.map(x=>`<option value="${escapeAttr(x.InstallerCode)}">${escapeHtml(x.InstallerCode)} — ${escapeHtml(x.InstallerName)}${x.ContactNumber ? " • " + escapeHtml(x.ContactNumber) : ""}</option>`).join("")
+      : `<option value="">No installers configured</option>`;
+
+    renderInstallerBox();
+  }
+
+  function addInstallerCode(code){
+    const k = String(code||"").trim();
+    if(!k) return;
+    if(selectedInstallerState.some(x=>String(x.InstallerCode)===k)){
+      $("fInstallerPicker").value = "";
+      return;
+    }
+
+    const hit = installerByCode(k) || { InstallerCode:k, InstallerName:k, ContactNumber:"" };
+    selectedInstallerState.push({
+      InstallerCode: String(hit.InstallerCode || k),
+      InstallerName: String(hit.InstallerName || k),
+      ContactNumber: String(hit.ContactNumber || "")
+    });
+
+    $("fInstallerPicker").value = "";
+    renderInstallerBox();
+  }
+
+  function removeInstallerCode(code){
+    const k = String(code||"");
+    selectedInstallerState = selectedInstallerState.filter(x=>String(x.InstallerCode)!==k);
+    renderInstallerBox();
   }
 
   function selectedInstallerCodes(){
-    return Array.from($("fInstallers").selectedOptions || []).map(o=>o.value).filter(Boolean);
+    return selectedInstallerState.map(x=>String(x.InstallerCode)).filter(Boolean);
   }
 
   function selectInstallerCodes(codes){
-    const wanted = new Set((codes||[]).map(String));
-    Array.from($("fInstallers").options || []).forEach(opt=>{
-      opt.selected = wanted.has(String(opt.value));
+    const wanted = Array.from(new Set((codes||[]).map(x=>String(x)).filter(Boolean)));
+    selectedInstallerState = wanted.map(code=>{
+      const hit = installerByCode(code) || (BOOT && BOOT.installers ? BOOT.installers.find(x=>String(x.InstallerCode)===String(code)) : null) || {};
+      return {
+        InstallerCode: String(hit.InstallerCode || code),
+        InstallerName: String(hit.InstallerName || code),
+        ContactNumber: String(hit.ContactNumber || "")
+      };
     });
+    if($("fInstallerPicker")) $("fInstallerPicker").value = "";
+    renderInstallerBox();
   }
 
   function selectedInstallerObjects(){
-    const codes = selectedInstallerCodes();
-    const installers = (BOOT && BOOT.installers ? BOOT.installers : []);
-    return codes.map(code=>{
-      const hit = installers.find(x=>String(x.InstallerCode)===String(code)) || {};
-      return {
-        InstallerCode: code,
-        InstallerName: hit.InstallerName || code,
-        ContactNumber: hit.ContactNumber || ""
-      };
-    });
+    return selectedInstallerState.map(x=>({
+      InstallerCode: x.InstallerCode,
+      InstallerName: x.InstallerName || x.InstallerCode,
+      ContactNumber: x.ContactNumber || ""
+    }));
   }
 
   function installerLabelFromPayload(payload){
@@ -904,6 +968,15 @@
   });
 
   $("q").addEventListener("input", ()=> renderAll());
+  $("btnAddInstaller").addEventListener("click", ()=>{
+    addInstallerCode($("fInstallerPicker").value);
+  });
+
+  $("fInstallerPicker").addEventListener("change", ()=>{
+    const code = $("fInstallerPicker").value;
+    if(code) addInstallerCode(code);
+  });
+
 
   function openPinModal(){
     $("pinBg").style.display = "flex";
