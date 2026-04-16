@@ -426,6 +426,70 @@
 
     .searchBox{min-width:280px}
 
+
+    .appShell{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 340px;
+      gap:14px;
+      align-items:start;
+    }
+
+    .contentArea{min-width:0;}
+    .sideRail{
+      position:sticky;
+      top:88px;
+      display:grid;
+      gap:12px;
+    }
+
+    .sideSection .sectionHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:10px;
+      cursor:pointer;
+    }
+
+    .sideSection .sectionBody{display:block;}
+    .sideSection.collapsed .sectionBody{display:none;}
+
+    .badge.attn{
+      color:#ffe8b7;
+      border-color:rgba(255,210,122,.55);
+    }
+
+    .day.selected{
+      outline:2px solid rgba(63,174,115,.85);
+      outline-offset:2px;
+    }
+
+    .dayPickHint{margin-bottom:8px;}
+    .resourceList{
+      display:grid;
+      gap:6px;
+      margin-top:8px;
+    }
+    .resourceItem{
+      padding:8px 10px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      font-size:12px;
+      color:var(--txt);
+    }
+    .resourceItem.warn{
+      border-color:rgba(255,210,122,.45);
+      background:rgba(255,210,122,.08);
+    }
+    .mutedLine{font-size:12px;color:var(--muted);}
+    .refreshBadge{min-width:115px;text-align:center;}
+
+    @media (max-width: 1100px){
+      .appShell{grid-template-columns:1fr;}
+      .sideRail{position:static;}
+    }
+
     footer{
       margin-top:18px;
       text-align:center;
@@ -442,6 +506,7 @@
     <span class="badge hideOnMobile" id="rangeBadge">Not loaded</span>
     <span class="badge hideOnMobile">2-week rolling (Mon start)</span>
     <span class="badge" id="pinBadge">PIN: not set</span>
+    <span class="badge refreshBadge" id="refreshBadge">Sync idle</span>
     <div class="spacer"></div>
     <button type="button" id="btnMobileControls" class="mobileOnly">Controls</button>
   </div>
@@ -479,10 +544,37 @@
     <div class="tab" data-tab="dispatch">Dispatch</div>
   </div>
 
-  <div id="viewCalendar" class="panel"></div>
-  <div id="viewInbox" class="panel" style="display:none;"></div>
-  <div id="viewAll" class="panel" style="display:none;"></div>
-  <div id="viewDispatch" class="panel" style="display:none;"></div>
+  <div class="appShell">
+    <div class="contentArea">
+      <div id="viewCalendar" class="panel"></div>
+      <div id="viewInbox" class="panel" style="display:none;"></div>
+      <div id="viewAll" class="panel" style="display:none;"></div>
+      <div id="viewDispatch" class="panel" style="display:none;"></div>
+    </div>
+
+    <aside class="sideRail">
+      <div class="panel sideSection" id="sideInboxSection">
+        <div class="sectionHead" id="toggleSideInbox">
+          <div style="font-weight:900">Inbox</div>
+          <div class="line">
+            <span class="badge attn" id="sidePendingBadge">0 pending</span>
+            <span class="badge" id="sideInboxChevron">Hide</span>
+          </div>
+        </div>
+        <div class="sectionBody" id="sideInboxBody"></div>
+      </div>
+
+      <div class="panel sideSection" id="sideDaySection">
+        <div class="sectionHead" id="toggleSideDay">
+          <div style="font-weight:900">Selected Day</div>
+          <span class="badge" id="sideDayChevron">Hide</span>
+        </div>
+        <div class="sectionBody" id="sideDayBody">
+          <div class="hint dayPickHint">Click a day card to inspect available resources.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
 
   <footer>© 2026 Focolare Carpentry / SJTC Manufacturing Inc. • Created by <b>Engr. CK Empeynado</b></footer>
 </main>
@@ -634,6 +726,8 @@
   let isCreating = false;
   let isSavingRequest = false;
   let selectedInstallerState = [];
+  let selectedDayKey = null;
+  let autoRefreshTimer = null;
 
   const pad2 = n => String(n).padStart(2,"0");
   const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
@@ -1026,6 +1120,7 @@
 
       const day = document.createElement("div");
       day.className = key===todayKey ? "day today" : "day";
+      day.dataset.day = key;
       day.innerHTML = `
         <div class="dayHead">
           <div class="h">${d.toLocaleDateString(undefined,{weekday:"long"})}${key===todayKey ? " • Today" : ""}</div>
@@ -1047,6 +1142,10 @@
     wrap.querySelectorAll("[data-open]").forEach(el=>{
       el.addEventListener("click", ()=> openModal(el.dataset.open));
     });
+    wrap.querySelectorAll("[data-day]").forEach(el=>{
+      el.addEventListener("click", ()=> setSelectedDay(el.dataset.day));
+    });
+    highlightSelectedDays();
   }
 
   function tableHTML(list){
@@ -1082,6 +1181,121 @@
     `;
   }
 
+
+  function selectedDayDateObj(){
+    return selectedDayKey ? new Date(selectedDayKey + "T00:00:00") : new Date();
+  }
+
+  function setSelectedDay(key){
+    selectedDayKey = key;
+    renderSelectedDayPanel();
+    highlightSelectedDays();
+  }
+
+  function highlightSelectedDays(){
+    document.querySelectorAll("[data-day]").forEach(el=>{
+      el.classList.toggle("selected", el.dataset.day === selectedDayKey);
+    });
+  }
+
+  function toggleSection(sectionId, chevronId){
+    const el = $(sectionId);
+    el.classList.toggle("collapsed");
+    $(chevronId).textContent = el.classList.contains("collapsed") ? "Show" : "Hide";
+  }
+
+  function renderSideInbox(){
+    const pending = requests.filter(r=>r.Status==="PENDING").sort((a,b)=> new Date(a.StartDT)-new Date(b.StartDT));
+    $("sidePendingBadge").textContent = `${pending.length} pending`;
+    const wrap = $("sideInboxBody");
+    if(!pending.length){
+      wrap.innerHTML = `<div class="hint">No pending requests.</div>`;
+      return;
+    }
+    wrap.innerHTML = pending.map(r=>`
+      <div class="resourceItem click" data-open="${escapeAttr(r.RequestID)}">
+        <div style="font-weight:800">${escapeHtml(r.RequestID)}</div>
+        <div class="mutedLine">${escapeHtml(displayType(r.Type))} • ${escapeHtml(requestTitle(r))}</div>
+        <div class="mutedLine">${escapeHtml(new Date(r.StartDT).toLocaleString())}</div>
+      </div>
+    `).join("");
+    wrap.querySelectorAll("[data-open]").forEach(el=> el.addEventListener("click", ()=> openModal(el.dataset.open)));
+  }
+
+  function listForDay(key, list){
+    return list.filter(r=> ymd(new Date(r.StartDT)) === key && r.Status !== "CANCELLED");
+  }
+
+  function resourceAvailableOnDay(resources, dayItems, codeKey){
+    return resources.filter(x => !dayItems.some(r => String(r[codeKey]||"") === String(x[codeKey]||"")));
+  }
+
+  function renderSelectedDayPanel(){
+    const key = selectedDayKey || ymd(new Date());
+    const dateObj = new Date(key + "T00:00:00");
+    const dayItems = listForDay(key, requests).filter(r=>r.Status==="CONFIRMED");
+    const pendingDay = listForDay(key, requests).filter(r=>r.Status==="PENDING");
+    const driversAvail = resourceAvailableOnDay(activeDrivers(), dayItems, "DriverCode");
+    const vehiclesAvail = resourceAvailableOnDay(activeVehicles(), dayItems, "VehicleCode");
+    const installersAvail = activeInstallers().filter(inst => !dayItems.some(r => {
+      const codes = (r.InstallerCodes || ((r.Payload && r.Payload.InstallerCodes) || [])).map(String);
+      return codes.includes(String(inst.InstallerCode));
+    }));
+
+    const codedDigits = codingDigitsForDate(dateObj);
+    const vehicleWarnings = vehiclesAvail.filter(v=> codedDigits.includes(String(v.PlateEnding||"").trim()));
+
+    $("sideDayBody").innerHTML = `
+      <div class="small"><b>Date:</b> ${escapeHtml(dateObj.toLocaleDateString(undefined,{weekday:"long", month:"short", day:"numeric", year:"numeric"}))}</div>
+      <div class="small" style="margin-top:4px"><b>Confirmed trips:</b> ${dayItems.length}</div>
+      <div class="small" style="margin-top:4px"><b>Pending requests:</b> ${pendingDay.length}</div>
+
+      <div class="small" style="font-weight:900;margin-top:12px">Available Drivers</div>
+      <div class="resourceList">
+        ${driversAvail.length ? driversAvail.map(d=>`<div class="resourceItem">${escapeHtml(d.DriverCode)} — ${escapeHtml(d.DriverName||"")}</div>`).join("") : `<div class="hint">No drivers available.</div>`}
+      </div>
+
+      <div class="small" style="font-weight:900;margin-top:12px">Available Vehicles</div>
+      <div class="resourceList">
+        ${vehiclesAvail.length ? vehiclesAvail.map(v=>`<div class="resourceItem ${vehicleWarnings.includes(v) ? "warn" : ""}">${escapeHtml(v.VehicleCode)} — ${escapeHtml(v.VehicleLabel||"")}${vehicleWarnings.includes(v) ? ` <span class="mutedLine">(coding-restricted in NCR)</span>` : ""}</div>`).join("") : `<div class="hint">No vehicles available.</div>`}
+      </div>
+
+      <div class="small" style="font-weight:900;margin-top:12px">Available Installers</div>
+      <div class="resourceList">
+        ${installersAvail.length ? installersAvail.map(i=>`<div class="resourceItem">${escapeHtml(i.InstallerCode)} — ${escapeHtml(i.InstallerName||"")}</div>`).join("") : `<div class="hint">No installers available.</div>`}
+      </div>
+
+      ${vehicleWarnings.length ? `<div class="small" style="font-weight:900;margin-top:12px">Coding Warning</div><div class="resourceList">${vehicleWarnings.map(v=>`<div class="resourceItem warn">${escapeHtml(v.VehicleCode)} ends in ${escapeHtml(v.PlateEnding||"?")} and may be coding-restricted for NCR trips on this day.</div>`).join("")}</div>` : ``}
+    `;
+  }
+
+  function isAnyModalOpen(){
+    return ["modalBg","tripBg","pinBg"].some(id => {
+      const el = $(id);
+      return el && el.style.display === "flex";
+    });
+  }
+
+  async function refreshSilently(reason){
+    if(!pin || isAnyModalOpen() || isSavingRequest) return;
+    try{
+      $("refreshBadge").textContent = reason === "timer" ? "Syncing..." : "Refreshing...";
+      const w = windowStartEndISO();
+      const data = await api("managerListRequests", { pin, startISO: w.startISO });
+      requests = data.items || [];
+      renderAll();
+      $("refreshBadge").textContent = "Synced just now";
+    }catch(err){
+      $("refreshBadge").textContent = "Sync failed";
+      console.error("Silent refresh failed", err);
+    }
+  }
+
+  function startAutoRefresh(){
+    if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(()=>{ refreshSilently("timer"); }, 30000);
+  }
+
   function renderInbox(){
     const wrap = $("viewInbox");
     const pending = requests.filter(r=>r.Status==="PENDING");
@@ -1092,6 +1306,10 @@
     wrap.querySelectorAll("[data-open]").forEach(el=>{
       el.addEventListener("click", ()=> openModal(el.dataset.open));
     });
+    wrap.querySelectorAll("[data-day]").forEach(el=>{
+      el.addEventListener("click", ()=> setSelectedDay(el.dataset.day));
+    });
+    highlightSelectedDays();
   }
 
   function renderAllRequests(){
@@ -1104,6 +1322,10 @@
     wrap.querySelectorAll("[data-open]").forEach(el=>{
       el.addEventListener("click", ()=> openModal(el.dataset.open));
     });
+    wrap.querySelectorAll("[data-day]").forEach(el=>{
+      el.addEventListener("click", ()=> setSelectedDay(el.dataset.day));
+    });
+    highlightSelectedDays();
   }
 
   function renderDispatchBoard(){
@@ -1132,12 +1354,14 @@
         </div>`;
       }).join("") || `<div class="hint">No confirmed dispatches.</div>`;
       chunks.push(`<div class="dispatchDay">
-        <div class="day ${key===todayKey?"today":""}" style="min-height:auto"><div class="dayHead"><div class="h">${d.toLocaleDateString(undefined,{weekday:"long"})}${key===todayKey ? " • Today" : ""}</div><div class="s">${d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}</div></div><div class="dayBody">${groupHtml}</div></div>
+        <div class="day ${key===todayKey?"today":""}" data-day="${key}" style="min-height:auto"><div class="dayHead"><div class="h">${d.toLocaleDateString(undefined,{weekday:"long"})}${key===todayKey ? " • Today" : ""}</div><div class="s">${d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}</div></div><div class="dayBody">${groupHtml}</div></div>
       </div>`);
     }
 
     wrap.innerHTML = chunks.join("");
-    wrap.querySelectorAll("[data-trip]").forEach(el=> el.addEventListener("click", ()=> openTripModal(el.dataset.trip)));
+    wrap.querySelectorAll("[data-trip]").forEach(el=> el.addEventListener("click", (ev)=> { ev.stopPropagation(); openTripModal(el.dataset.trip); }));
+    wrap.querySelectorAll("[data-day]").forEach(el=> el.addEventListener("click", ()=> setSelectedDay(el.dataset.day)));
+    highlightSelectedDays();
   }
 
   function renderAll(){
@@ -1145,6 +1369,8 @@
     renderInbox();
     renderAllRequests();
     renderDispatchBoard();
+    renderSideInbox();
+    renderSelectedDayPanel();
   }
 
   async function bootstrap(){
@@ -1160,6 +1386,8 @@
       BOOT = await api("managerBootstrap", { pin });
       buildFilters();
       await loadWindow();
+      startAutoRefresh();
+      $("refreshBadge").textContent = "Synced just now";
     } catch(e){
       $("rangeBadge").textContent = "Bootstrap failed";
       throw e;
@@ -1876,6 +2104,8 @@
   $("tripStartBtn").addEventListener("click", ()=> saveTripUpdate("START"));
   $("tripEndBtn").addEventListener("click", ()=> saveTripUpdate("END"));
   $("tripCorrect").addEventListener("click", ()=> saveTripUpdate("CORRECT"));
+  $("toggleSideInbox").addEventListener("click", ()=> toggleSection("sideInboxSection","sideInboxChevron"));
+  $("toggleSideDay").addEventListener("click", ()=> toggleSection("sideDaySection","sideDayChevron"));
 
   bootstrap().catch(e=>{
     console.error("Bootstrap failed:", e);
