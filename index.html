@@ -1425,7 +1425,45 @@
   }
 
   function activeInstallers(){
-    return (BOOT && BOOT.installers ? BOOT.installers : []).filter(x=>String(x.Active||"Y").toUpperCase()==="Y");
+    const fromBoot = (BOOT && Array.isArray(BOOT.installers) ? BOOT.installers : []).map(x => ({
+      InstallerCode: String((x && x.InstallerCode) || "").trim(),
+      InstallerName: String((x && x.InstallerName) || (x && x.InstallerCode) || "").trim(),
+      ContactNumber: String((x && x.ContactNumber) || "").trim(),
+      Active: String((x && x.Active) || "Y").trim() || "Y"
+    })).filter(x => x.InstallerCode);
+
+    const map = new Map();
+    fromBoot.forEach(x => {
+      if (String(x.Active || 'Y').toUpperCase() === 'Y') map.set(x.InstallerCode, x);
+    });
+
+    requests.forEach(r => {
+      const arr = Array.isArray(r && r.Payload && r.Payload.Installers) ? r.Payload.Installers : [];
+      arr.forEach(inst => {
+        const code = String((inst && (inst.InstallerCode || inst.code)) || inst || '').trim();
+        if (!code || map.has(code)) return;
+        map.set(code, {
+          InstallerCode: code,
+          InstallerName: String((inst && (inst.InstallerName || inst.name || inst.Name)) || code).trim(),
+          ContactNumber: String((inst && (inst.ContactNumber || inst.phone || inst.Mobile)) || '').trim(),
+          Active: 'Y'
+        });
+      });
+
+      const codes = Array.isArray(r && r.Payload && r.Payload.InstallerCodes) ? r.Payload.InstallerCodes : [];
+      codes.forEach(codeRaw => {
+        const code = String(codeRaw || '').trim();
+        if (!code || map.has(code)) return;
+        map.set(code, {
+          InstallerCode: code,
+          InstallerName: code,
+          ContactNumber: '',
+          Active: 'Y'
+        });
+      });
+    });
+
+    return Array.from(map.values()).filter(x => String(x.Active || 'Y').toUpperCase() === 'Y');
   }
 
   function installerByCode(code){
@@ -1458,7 +1496,7 @@
 
     picker.innerHTML = installers.length
       ? `<option value="">Select installer</option>` + installers.map(x=>`<option value="${escapeAttr(x.InstallerCode)}">${escapeHtml(x.InstallerCode)} — ${escapeHtml(x.InstallerName)}${x.ContactNumber ? " • " + escapeHtml(x.ContactNumber) : ""}</option>`).join("")
-      : `<option value="">No installers configured</option>`;
+      : `<option value="">No installers found yet</option>`;
 
     renderInstallerBox();
   }
