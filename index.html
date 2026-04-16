@@ -487,6 +487,48 @@
   <footer>© 2026 Focolare Carpentry / SJTC Manufacturing Inc. • Created by <b>Engr. CK Empeynado</b></footer>
 </main>
 
+
+<!-- Trip Modal -->
+<div class="modalBg" id="tripBg">
+  <div class="modal">
+    <div class="modalH">
+      <div style="font-weight:900">Trip Update</div>
+      <span class="badge" id="tripRid"></span>
+      <div class="spacer"></div>
+      <span class="badge" id="tripCurrentStatus"></span>
+    </div>
+    <div class="modalB">
+      <div id="tripSummary" class="summaryBox"></div>
+      <div class="twoCol">
+        <div class="summaryBox">
+          <div class="small" style="font-weight:900;margin-bottom:8px">Start Time</div>
+          <div class="line" style="margin-bottom:8px">
+            <label><input type="radio" name="startMode" value="AUTO" checked> Auto</label>
+            <label><input type="radio" name="startMode" value="MANUAL"> Manual</label>
+          </div>
+          <input id="tripStartTime" type="datetime-local" disabled />
+          <div class="hint" style="margin-top:6px">Auto uses the current time when you confirm.</div>
+        </div>
+        <div class="summaryBox">
+          <div class="small" style="font-weight:900;margin-bottom:8px">End Time</div>
+          <div class="line" style="margin-bottom:8px">
+            <label><input type="radio" name="endMode" value="AUTO" checked> Auto</label>
+            <label><input type="radio" name="endMode" value="MANUAL"> Manual</label>
+          </div>
+          <input id="tripEndTime" type="datetime-local" disabled />
+          <div class="hint" style="margin-top:6px">Use Manual if you forgot to log the actual arrival time.</div>
+        </div>
+      </div>
+    </div>
+    <div class="modalF">
+      <button id="tripClose">Close</button>
+      <button class="primary" id="tripCorrect">Save Correction</button>
+      <button class="ok" id="tripStartBtn">Mark In Transit</button>
+      <button class="ok" id="tripEndBtn">Mark Arrived</button>
+    </div>
+  </div>
+</div>
+
 <!-- PIN Modal -->
 <div class="modalBg" id="pinBg">
   <div class="modal">
@@ -681,7 +723,40 @@
   }
 
   function displayType(type){
-    return type === "Client Call" || type === "Client Call" ? "Client Call" : (type || "");
+    return type === "Travel" || type === "Client Call" ? "Client Call" : (type || "");
+  }
+
+
+  function tripStatusLabel(r){
+    return String(r.TripStatus || "READY").trim() || "READY";
+  }
+
+  function tripStatusPill(r){
+    const st = tripStatusLabel(r);
+    if(st === "IN_TRANSIT") return `<span class="pill warn">🚚 In Transit</span>`;
+    if(st === "ARRIVED") return `<span class="pill ok">📍 Arrived</span>`;
+    return `<span class="pill info">Ready</span>`;
+  }
+
+  function tripTimesHTML(r){
+    const bits = [];
+    if(r.DepartedAt) bits.push(`Start: ${new Date(r.DepartedAt).toLocaleString()}`);
+    if(r.ArrivedAt) bits.push(`End: ${new Date(r.ArrivedAt).toLocaleString()}`);
+    return bits.join(" • ") || "No trip log yet";
+  }
+
+  function codingDigitsForDate(dateObj){
+    const day = dateObj.getDay();
+    if(day === 1) return ["1","2"];
+    if(day === 2) return ["3","4"];
+    if(day === 3) return ["5","6"];
+    if(day === 4) return ["7","8"];
+    if(day === 5) return ["9","0"];
+    return [];
+  }
+
+  function getVehicleByCode(code){
+    return (BOOT && BOOT.vehicles ? BOOT.vehicles : []).find(v => v.VehicleCode === code) || null;
   }
 
   function typePill(type){
@@ -786,6 +861,8 @@
     items.push(["Vehicle", r.VehicleCode || "—"]);
     items.push(["Driver", r.DriverCode || "—"]);
     items.push(["Installers", installerTextFromPayload(p)]);
+    items.push(["Area", p.AreaClass || "—"]);
+    items.push(["Trip", tripStatusLabel(r)]);
     items.push(["Notes", p.Notes || "—"]);
     return `<div class="small" style="font-weight:900;margin-bottom:8px">Schedule Summary</div><div class="summaryGrid">` + items.map(([k,v])=>`<div class="small"><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</div>`).join("") + `</div>`;
   }
@@ -879,6 +956,15 @@
     if(info.vehicleConflicts.length) warnings.push(conflictListHTML("Vehicle conflict", info.vehicleConflicts, r=>`<li>${escapeHtml(r.RequestID)} • ${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))} • ${escapeHtml(cardMainLine(r).replace(/<[^>]+>/g,''))}</li>`));
     if(info.installerConflicts.length) warnings.push(conflictListHTML("Installer conflict", info.installerConflicts, r=>`<li>${escapeHtml(r.RequestID)} • ${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))} • ${escapeHtml(installerTextFromPayload(r.Payload))}</li>`));
     if(info.blockedVehicleCodes.length) warnings.push(`<div class="small" style="margin-top:8px"><b>Date-blocked vehicles:</b> ${escapeHtml(info.blockedVehicleCodes.join(", "))}</div>`);
+    const payload = currentFormPayload();
+    if ((payload.AreaClass || "") === "NCR" && vehicle) {
+      const vv = getVehicleByCode(vehicle);
+      const codedDigits = codingDigitsForDate(start);
+      const plateEnding = String((vv && vv.PlateEnding) || "").trim();
+      if (codedDigits.length && plateEnding && codedDigits.includes(plateEnding)) {
+        warnings.push(`<div class="small" style="margin-top:8px"><b>Coding warning:</b> ${escapeHtml(vehicle)} is restricted in NCR on this day (plate ending ${escapeHtml(plateEnding)}).</div>`);
+      }
+    }
 
     box.innerHTML = `<div class="small" style="font-weight:900">Availability & Conflict Check</div>` +
       (warnings.length ? warnings.join("") : `<div class="small" style="margin-top:6px;color:#d6ffe9">No conflicts for the current selection.</div>`) +
@@ -888,7 +974,7 @@
   }
 
   function attachDynamicFieldListeners(){
-    ["pSO","pClient","pContact","pAddr","pDestination","pPurpose","pRequiredVehicle","pNotes","pItems"].forEach(id=>{
+    ["pSO","pClient","pContact","pAddr","pDestination","pPurpose","pRequiredVehicle","pNotes","pItems","pAreaClass"].forEach(id=>{
       const el = $(id);
       if(!el) return;
       el.oninput = ()=> renderRequestSummary();
@@ -905,9 +991,11 @@
           ${typePill(r.Type)}
           ${pillForScheduled(r)}
           ${pillForStatus(r.Status)}
+          ${tripStatusPill(r)}
         </div>
         <div class="compactMeta">
           <span>🕒 ${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</span>
+          <span>${escapeHtml(tripTimesHTML(r))}</span>
           <span>👤 ${escapeHtml(r.DriverCode||"—")}</span>
           <span>🚚 ${escapeHtml(r.VehicleCode||"—")}</span>
         </div>
@@ -1040,7 +1128,7 @@
             <div style="font-weight:900">${escapeHtml(driver)} • ${escapeHtml(vehicle)}</div>
             <div class="small">${items.length} trip${items.length>1?"s":""}</div>
           </div>
-          <div class="dispatchItems">${items.map(r=>`<div class="dispatchItem click" data-open="${escapeAttr(r.RequestID)}"><div class="small"><b>${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</b></div><div class="compactMain">${cardMainLine(r)}</div></div>`).join("")}</div>
+          <div class="dispatchItems">${items.map(r=>`<div class="dispatchItem click" data-trip="${escapeAttr(r.RequestID)}"><div class="small"><b>${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</b></div><div class="compactMain">${cardMainLine(r)}</div><div class="small" style="margin-top:4px">${tripStatusLabel(r)}${tripTimesHTML(r) ? " • " + escapeHtml(tripTimesHTML(r)) : ""}</div></div>`).join("")}</div>
         </div>`;
       }).join("") || `<div class="hint">No confirmed dispatches.</div>`;
       chunks.push(`<div class="dispatchDay">
@@ -1049,7 +1137,7 @@
     }
 
     wrap.innerHTML = chunks.join("");
-    wrap.querySelectorAll("[data-open]").forEach(el=> el.addEventListener("click", ()=> openModal(el.dataset.open)));
+    wrap.querySelectorAll("[data-trip]").forEach(el=> el.addEventListener("click", ()=> openTripModal(el.dataset.trip)));
   }
 
   function renderAll(){
@@ -1323,6 +1411,7 @@
           <div><label>Items</label><input id="pItems" value="${escapeAttr(p.Items||"")}" /></div>
         </div>
         <div><label>Address</label><input id="pAddr" value="${escapeAttr(p.Address||"")}" /></div>
+          <div><label>Area</label><select id="pAreaClass"><option value="NON_NCR" ${(p.AreaClass||"NON_NCR")==="NON_NCR"?"selected":""}>Non-NCR</option><option value="NCR" ${(p.AreaClass||"")==="NCR"?"selected":""}>NCR</option></select></div>
         <div>
           <label>Installers (Admin only)</label>
           <select id="fInstallerPicker" style="width:100%"></select>
@@ -1341,6 +1430,7 @@
         <div class="twoCol">
           <div><label>Client Name</label><input id="pClient" value="${escapeAttr(p.ClientName||"")}" /></div>
           <div><label>Destination</label><input id="pDestination" value="${escapeAttr(p.Destination||"")}" /></div>
+          <div><label>Area</label><select id="pAreaClass"><option value="NON_NCR" ${(p.AreaClass||"NON_NCR")==="NON_NCR"?"selected":""}>Non-NCR</option><option value="NCR" ${(p.AreaClass||"")==="NCR"?"selected":""}>NCR</option></select></div>
         </div>
         <div>
           <label>Installers (Admin only)</label>
@@ -1359,6 +1449,7 @@
       <div class="twoCol">
         <div><label>Client Name (optional)</label><input id="pClient" value="${escapeAttr(p.ClientName||"")}" /></div>
         <div><label>Destination</label><input id="pDestination" value="${escapeAttr(p.Destination||"")}" /></div>
+        <div><label>Area</label><select id="pAreaClass"><option value="NON_NCR" ${(p.AreaClass||"NON_NCR")==="NON_NCR"?"selected":""}>Non-NCR</option><option value="NCR" ${(p.AreaClass||"")==="NCR"?"selected":""}>NCR</option></select></div>
         <div>
           <label>Purpose</label>
           <select id="pPurpose">
@@ -1399,6 +1490,7 @@
         Address: $("pAddr") ? $("pAddr").value.trim() : "",
         Items: $("pItems") ? $("pItems").value.trim() : "",
         Notes: $("pNotes") ? $("pNotes").value.trim() : "",
+        AreaClass: $("pAreaClass") ? $("pAreaClass").value.trim() : "NON_NCR",
         InstallerCodes: selectedInstallerCodes(),
         Installers: selectedInstallerObjects()
       };
@@ -1409,6 +1501,7 @@
         ClientName: $("pClient") ? $("pClient").value.trim() : "",
         Destination: $("pDestination") ? $("pDestination").value.trim() : "",
         Notes: $("pNotes") ? $("pNotes").value.trim() : "",
+        AreaClass: $("pAreaClass") ? $("pAreaClass").value.trim() : "NON_NCR",
         InstallerCodes: selectedInstallerCodes(),
         Installers: selectedInstallerObjects()
       };
@@ -1420,6 +1513,7 @@
       Purpose: $("pPurpose") ? $("pPurpose").value.trim() : "",
       RequiredVehicle: $("pRequiredVehicle") ? $("pRequiredVehicle").value.trim() : "",
       Notes: $("pNotes") ? $("pNotes").value.trim() : "",
+      AreaClass: $("pAreaClass") ? $("pAreaClass").value.trim() : "NON_NCR",
       InstallerCodes: selectedInstallerCodes(),
       Installers: selectedInstallerObjects()
     };
@@ -1729,6 +1823,59 @@
       alert("Failed to duplicate request.\n\n" + (err.message || err));
     }
   });
+
+
+  function selectedMode(name){
+    const hit = document.querySelector(`input[name="${name}"]:checked`);
+    return hit ? hit.value : "AUTO";
+  }
+
+  function syncTripModeInputs(){
+    $("tripStartTime").disabled = selectedMode("startMode") !== "MANUAL";
+    $("tripEndTime").disabled = selectedMode("endMode") !== "MANUAL";
+  }
+
+  function openTripModal(requestId){
+    const r = requests.find(x => x.RequestID === requestId);
+    if(!r) return;
+    currentRequest = r;
+    $("tripBg").style.display = "flex";
+    $("tripRid").textContent = r.RequestID;
+    $("tripCurrentStatus").textContent = tripStatusLabel(r);
+    $("tripSummary").innerHTML = buildSummaryGridHTML(r, r.Payload || {}) + `<div class="small" style="margin-top:8px"><b>Trip Log:</b> ${escapeHtml(tripTimesHTML(r))}</div>`;
+    $("tripStartTime").value = r.DepartedAt ? toLocalInputValue(r.DepartedAt) : "";
+    $("tripEndTime").value = r.ArrivedAt ? toLocalInputValue(r.ArrivedAt) : "";
+    document.querySelector('input[name="startMode"][value="AUTO"]').checked = !r.DepartedAt;
+    document.querySelector('input[name="startMode"][value="MANUAL"]').checked = !!r.DepartedAt;
+    document.querySelector('input[name="endMode"][value="AUTO"]').checked = !r.ArrivedAt;
+    document.querySelector('input[name="endMode"][value="MANUAL"]').checked = !!r.ArrivedAt;
+    syncTripModeInputs();
+  }
+
+  function closeTripModal(){ $("tripBg").style.display = "none"; }
+
+  async function saveTripUpdate(tripAction){
+    if(!currentRequest) return;
+    const payload = {
+      pin,
+      requestId: currentRequest.RequestID,
+      tripAction,
+      startMode: selectedMode("startMode"),
+      endMode: selectedMode("endMode"),
+      startTime: $("tripStartTime").value ? fromLocalInputValue($("tripStartTime").value) : "",
+      endTime: $("tripEndTime").value ? fromLocalInputValue($("tripEndTime").value) : ""
+    };
+    await api("managerUpdateTrip", payload);
+    closeTripModal();
+    await bootstrap();
+  }
+
+  document.querySelectorAll('input[name="startMode"], input[name="endMode"]').forEach(el => el.addEventListener('change', syncTripModeInputs));
+  $("tripClose").addEventListener("click", closeTripModal);
+  $("tripBg").addEventListener("click", e=>{ if(e.target === $("tripBg")) closeTripModal(); });
+  $("tripStartBtn").addEventListener("click", ()=> saveTripUpdate("START"));
+  $("tripEndBtn").addEventListener("click", ()=> saveTripUpdate("END"));
+  $("tripCorrect").addEventListener("click", ()=> saveTripUpdate("CORRECT"));
 
   bootstrap().catch(e=>{
     console.error("Bootstrap failed:", e);
