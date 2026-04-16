@@ -1425,61 +1425,16 @@
   }
 
   function activeInstallers(){
-    const fromBootRaw = (BOOT && Array.isArray(BOOT.installers) ? BOOT.installers : []);
-    const ordered = [];
-    const seen = new Set();
-
-    fromBootRaw.forEach(x => {
-      const item = {
+    return (BOOT && Array.isArray(BOOT.installers) ? BOOT.installers : [])
+      .map(x => ({
         InstallerCode: String((x && x.InstallerCode) || "").trim(),
         InstallerName: String((x && x.InstallerName) || (x && x.InstallerCode) || "").trim(),
         ContactNumber: String((x && x.ContactNumber) || "").trim(),
         Active: String((x && x.Active) || "Y").trim() || "Y"
-      };
-      if (!item.InstallerCode) return;
-      if (String(item.Active).toUpperCase() !== "Y") return;
-      if (seen.has(item.InstallerCode)) return;
-      seen.add(item.InstallerCode);
-      ordered.push(item);
-    });
-
-    const extras = [];
-    requests.forEach(r => {
-      const arr = Array.isArray(r && r.Payload && r.Payload.Installers) ? r.Payload.Installers : [];
-      arr.forEach(inst => {
-        const code = String((inst && (inst.InstallerCode || inst.code)) || inst || '').trim();
-        if (!code || seen.has(code)) return;
-        seen.add(code);
-        extras.push({
-          InstallerCode: code,
-          InstallerName: String((inst && (inst.InstallerName || inst.name || inst.Name)) || code).trim(),
-          ContactNumber: String((inst && (inst.ContactNumber || inst.phone || inst.Mobile)) || '').trim(),
-          Active: 'Y'
-        });
-      });
-
-      const codes = Array.isArray(r && r.Payload && r.Payload.InstallerCodes) ? r.Payload.InstallerCodes : [];
-      codes.forEach(codeRaw => {
-        const code = String(codeRaw || '').trim();
-        if (!code || seen.has(code)) return;
-        seen.add(code);
-        extras.push({
-          InstallerCode: code,
-          InstallerName: code,
-          ContactNumber: '',
-          Active: 'Y'
-        });
-      });
-    });
-
-    extras.sort((a, b) => {
-      const an = (a.InstallerName || a.InstallerCode || "").toLowerCase();
-      const bn = (b.InstallerName || b.InstallerCode || "").toLowerCase();
-      return an.localeCompare(bn) || String(a.InstallerCode).localeCompare(String(b.InstallerCode));
-    });
-
-    return ordered.concat(extras);
+      }))
+      .filter(x => x.InstallerCode && String(x.Active || 'Y').toUpperCase() === 'Y');
   }
+
   function installerByCode(code){
     return activeInstallers().find(x=>String(x.InstallerCode)===String(code)) || null;
   }
@@ -1510,7 +1465,7 @@
 
     picker.innerHTML = installers.length
       ? `<option value="">Select installer</option>` + installers.map(x=>`<option value="${escapeAttr(x.InstallerCode)}">${escapeHtml(x.InstallerCode)} — ${escapeHtml(x.InstallerName)}${x.ContactNumber ? " • " + escapeHtml(x.ContactNumber) : ""}</option>`).join("")
-      : `<option value="">No installers found yet</option>`;
+      : `<option value="">No installers configured</option>`;
 
     renderInstallerBox();
   }
