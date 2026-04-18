@@ -877,6 +877,12 @@
     return name || phone || String(code || "").trim();
   }
 
+  function driverNameOnlyByCode(code){
+    const d = getDriverByCode(code);
+    const name = String((d && d.DriverName) || "").trim();
+    return name || String(code || "").trim();
+  }
+
   function plateNoFromVehicleCode(code){
     const v = getVehicleByCode(code);
     return String((v && (v.PlateNo || v.PlateNumber || "")) || "").trim();
@@ -1469,7 +1475,7 @@
 
     box.innerHTML = `<div class="small" style="font-weight:900">Availability & Conflict Check</div>` +
       (warnings.length ? warnings.join("") : `<div class="small" style="margin-top:6px;color:#d6ffe9">No conflicts for the current selection.</div>`) +
-      `<div class="small" style="margin-top:10px"><b>Available Drivers:</b> ${escapeHtml(info.availableDrivers.map(x=>driverDisplayByCode(x.DriverCode)).join(", ") || "None")}</div>` +
+      `<div class="small" style="margin-top:10px"><b>Available Drivers:</b> ${escapeHtml(info.availableDrivers.map(x=>driverNameOnlyByCode(x.DriverCode)).join(", ") || "None")}</div>` +
       `<div class="small" style="margin-top:4px"><b>Available Vehicles:</b> ${escapeHtml(info.availableVehicles.map(x=>x.VehicleCode).join(", ") || "None")}</div>` +
       `<div class="small" style="margin-top:4px"><b>Available Installers:</b> ${escapeHtml(info.availableInstallers.map(x=>x.InstallerName || x.InstallerCode).join(", ") || "None")}</div>`;
   }
@@ -1497,7 +1503,7 @@
         <div class="compactMeta">
           <span>🕒 ${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</span>
           <span>${escapeHtml(tripTimesHTML(r))}</span>
-          <span>👤 ${escapeHtml(driverDisplayByCode(r.DriverCode)||"—")}</span>
+          <span>👤 ${escapeHtml(driverNameOnlyByCode(r.DriverCode)||"—")}</span>
           <span>🚚 ${escapeHtml(r.VehicleCode||"—")}</span>
         </div>
       </div>
@@ -1565,7 +1571,7 @@
           <td>${escapeHtml(displayType(r.Type))}</td>
           <td>${escapeHtml(requestTitle(r))}</td>
           <td>${st.toLocaleString()}</td>
-          <td>${escapeHtml(driverDisplayByCode(r.DriverCode)||"")}</td>
+          <td>${escapeHtml(driverNameOnlyByCode(r.DriverCode)||"")}</td>
           <td>${escapeHtml(r.VehicleCode||"")}</td>
         </tr>
       `;
@@ -1659,7 +1665,7 @@
 
       <div class="small" style="font-weight:900;margin-top:12px">Available Drivers</div>
       <div class="resourceList">
-        ${driversAvail.length ? driversAvail.map(d=>`<div class="resourceItem">${escapeHtml(driverDisplayByCode(d.DriverCode))}</div>`).join("") : `<div class="hint">No drivers available.</div>`}
+        ${driversAvail.length ? driversAvail.map(d=>`<div class="resourceItem">${escapeHtml(driverNameOnlyByCode(d.DriverCode))}</div>`).join("") : `<div class="hint">No drivers available.</div>`}
       </div>
 
       <div class="small" style="font-weight:900;margin-top:12px">Available Vehicles</div>
@@ -1775,7 +1781,7 @@
         const [driver, vehicle] = gk.split("|");
         return `<div class="dispatchGroup">
           <div class="dispatchHead">
-            <div style="font-weight:900">${escapeHtml(driverDisplayByCode(driver))} • ${escapeHtml(vehicle)}</div>
+            <div style="font-weight:900">${escapeHtml(driverNameOnlyByCode(driver))} • ${escapeHtml(vehicle)}</div>
             <div class="small">${items.length} trip${items.length>1?"s":""}</div>
           </div>
           <div class="dispatchItems">
