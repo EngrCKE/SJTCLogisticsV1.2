@@ -728,6 +728,7 @@
   let selectedInstallerState = [];
   let selectedDayKey = null;
   let autoRefreshTimer = null;
+  let selectedGatePassIds = new Set();
 
   const pad2 = n => String(n).padStart(2,"0");
   const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
@@ -851,6 +852,333 @@
 
   function getVehicleByCode(code){
     return (BOOT && BOOT.vehicles ? BOOT.vehicles : []).find(v => v.VehicleCode === code) || null;
+  }
+
+  function getDriverByCode(code){
+    return (BOOT && BOOT.drivers ? BOOT.drivers : []).find(d => d.DriverCode === code) || null;
+  }
+
+  function plateNoFromVehicleCode(code){
+    const v = getVehicleByCode(code);
+    return String((v && (v.PlateNo || v.PlateNumber || "")) || "").trim();
+  }
+
+  function uniqueNonEmpty(arr){
+    return Array.from(new Set((arr || []).map(x => String(x || "").trim()).filter(Boolean)));
+  }
+
+  function requestAddressForGatePass(r){
+    const p = r.Payload || {};
+    return String(p.Address || p.Destination || "").trim();
+  }
+
+  function requestPersonnelForGatePass(r){
+    const p = r.Payload || {};
+    const installers = Array.isArray(p.Installers) ? p.Installers : [];
+    const fromInstallers = installers.map(x => String((x && (x.InstallerName || x.InstallerCode)) || "").trim()).filter(Boolean);
+    const fromCodes = Array.isArray(p.InstallerCodes) ? p.InstallerCodes.map(x => String(x || "").trim()) : [];
+    return uniqueNonEmpty([...fromInstallers, ...fromCodes]);
+  }
+
+  function requestPurposeForGatePass(r){
+    return displayType(r.Type || "");
+  }
+
+  function toggleGatePassSelection(requestId, checked){
+    if(checked) selectedGatePassIds.add(String(requestId));
+    else selectedGatePassIds.delete(String(requestId));
+  }
+
+  function clearGatePassSelection(){
+    selectedGatePassIds.clear();
+    renderDispatchBoard();
+  }
+
+  function collectGatePassRequestsSelected(){
+    return requests.filter(r =>
+      selectedGatePassIds.has(String(r.RequestID)) &&
+      r.Status === "CONFIRMED"
+    );
+  }
+
+  function collectGatePassRequestsToday(){
+    const todayKey = ymd(new Date());
+    return requests.filter(r =>
+      r.Status === "CONFIRMED" &&
+      ymd(new Date(r.StartDT)) === todayKey
+    );
+  }
+
+  function groupGatePassRequests(list){
+    const groups = {};
+
+    list
+      .slice()
+      .sort((a,b)=> new Date(a.StartDT) - new Date(b.StartDT))
+      .forEach(r=>{
+        const dateKey = ymd(new Date(r.StartDT));
+        const driverCode = String(r.DriverCode || "").trim() || "UNASSIGNED";
+        const vehicleCode = String(r.VehicleCode || "").trim() || "";
+        const key = `${dateKey}||${driverCode}||${vehicleCode}`;
+
+        if(!groups[key]){
+          groups[key] = {
+            dateKey,
+            driverCode,
+            vehicleCode,
+            items: []
+          };
+        }
+        groups[key].items.push(r);
+      });
+
+    return Object.values(groups).map(g=>{
+      const driver = getDriverByCode(g.driverCode);
+      const vehicle = getVehicleByCode(g.vehicleCode);
+
+      const itineraries = uniqueNonEmpty(g.items.map(requestAddressForGatePass));
+      const personnel = uniqueNonEmpty(g.items.flatMap(requestPersonnelForGatePass));
+      const purposes = uniqueNonEmpty(g.items.map(requestPurposeForGatePass));
+      const requestedBy = uniqueNonEmpty(g.items.map(x => x.RequestedBy));
+
+      return {
+        dateKey: g.dateKey,
+        dateLabel: new Date(g.dateKey + "T00:00:00").toLocaleDateString(undefined, {
+          month:"short", day:"numeric", year:"numeric"
+        }),
+        vehicleLabel: String((vehicle && vehicle.VehicleLabel) || g.vehicleCode || "").trim(),
+        plateNo: plateNoFromVehicleCode(g.vehicleCode),
+        driverLabel: String((driver && driver.DriverName) || g.driverCode || "").trim(),
+        driverCode: g.driverCode,
+        vehicleCode: g.vehicleCode,
+        itineraries,
+        personnel,
+        purposeText: purposes.join(", "),
+        requestedByText: requestedBy.join(", "),
+        items: g.items
+      };
+    });
+  }
+
+  function gatePassSlipHTML(g){
+    const itineraryHtml = g.itineraries.length
+      ? `<ul>${g.itineraries.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+      : `<div class="blankLine">&nbsp;</div>`;
+
+    const personnelHtml = g.personnel.length
+      ? `<ul>${g.personnel.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+      : `<div class="blankLine">&nbsp;</div>`;
+
+    return `
+      <div class="gpSlip">
+        <div class="gpHead">
+          <div class="gpCompany">SJTC MANUFACTURING INC.</div>
+          <div class="gpTitle">GATE PASS</div>
+        </div>
+
+        <table class="gpTable">
+          <tr>
+            <td class="label">Date of Travel:</td>
+            <td class="value">${escapeHtml(g.dateLabel)}</td>
+            <td class="label">Time of Dispatch:</td>
+            <td class="value blank"></td>
+          </tr>
+          <tr>
+            <td class="label">Vehicle:</td>
+            <td class="value">${escapeHtml(g.vehicleLabel || g.vehicleCode || "")}</td>
+            <td class="label">Plate No.:</td>
+            <td class="value">${escapeHtml(g.plateNo || "")}</td>
+          </tr>
+          <tr>
+            <td class="label">Driver:</td>
+            <td class="value" colspan="3">${escapeHtml(g.driverLabel || g.driverCode || "")}</td>
+          </tr>
+          <tr>
+            <td class="label top">Itineraries:</td>
+            <td class="value top" colspan="3">${itineraryHtml}</td>
+          </tr>
+          <tr>
+            <td class="label top">Personnel:</td>
+            <td class="value top" colspan="3">${personnelHtml}</td>
+          </tr>
+          <tr>
+            <td class="label">Purpose:</td>
+            <td class="value" colspan="3">${escapeHtml(g.purposeText || "")}</td>
+          </tr>
+          <tr>
+            <td class="label">Remarks:</td>
+            <td class="value" colspan="3"></td>
+          </tr>
+          <tr>
+            <td class="label">Requested by:</td>
+            <td class="value" colspan="3">${escapeHtml(g.requestedByText || "")}</td>
+          </tr>
+          <tr>
+            <td class="label">Approved by:</td>
+            <td class="value" colspan="3"></td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
+  function buildGatePassPrintHTML(groups){
+    const slips = groups.map(g => gatePassSlipHTML(g)).join("");
+
+    return `
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Gate Pass Print</title>
+  <style>
+    @page{
+      size: Letter portrait;
+      margin: 0.35in;
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: Arial, Helvetica, sans-serif;
+      color:#000;
+      background:#fff;
+    }
+
+    .sheet{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.18in;
+    }
+
+    .gpSlip{
+      border:1px solid #000;
+      padding:8px 10px;
+      height: 3.15in;
+      overflow:hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      display:flex;
+      flex-direction:column;
+    }
+
+    .gpHead{
+      text-align:center;
+      margin-bottom:6px;
+    }
+
+    .gpCompany{
+      font-weight:700;
+      font-size:14px;
+      line-height:1.2;
+    }
+
+    .gpTitle{
+      font-weight:700;
+      font-size:14px;
+      margin-top:2px;
+      line-height:1.2;
+    }
+
+    .gpTable{
+      width:100%;
+      border-collapse:collapse;
+      font-size:11px;
+      table-layout:fixed;
+    }
+
+    .gpTable td{
+      border:1px solid #000;
+      padding:4px 5px;
+      vertical-align:middle;
+      word-wrap:break-word;
+    }
+
+    .gpTable td.label{
+      width:18%;
+      font-weight:700;
+    }
+
+    .gpTable td.value{
+      width:32%;
+    }
+
+    .gpTable td.top{
+      vertical-align:top;
+    }
+
+    .gpTable td.blank{
+      min-height:22px;
+    }
+
+    .gpTable ul{
+      margin:0;
+      padding-left:16px;
+    }
+
+    .gpTable li{
+      margin:0 0 2px 0;
+      line-height:1.2;
+    }
+
+    .blankLine{
+      min-height:18px;
+    }
+
+    @media print{
+      .sheet{
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">${slips}</div>
+  <script>
+    window.onload = function(){
+      window.print();
+    };
+  <\/script>
+</body>
+</html>
+    `;
+  }
+
+  function openGatePassPrint(groups){
+    if(!groups.length){
+      alert("No dispatches found for gate pass printing.");
+      return;
+    }
+
+    const html = buildGatePassPrintHTML(groups);
+    const w = window.open("", "_blank");
+    if(!w){
+      alert("Pop-up blocked. Please allow pop-ups for printing gate passes.");
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  }
+
+  function generateSelectedGatePasses(){
+    const picked = collectGatePassRequestsSelected();
+    if(!picked.length){
+      alert("Select at least one confirmed dispatch first.");
+      return;
+    }
+    const groups = groupGatePassRequests(picked);
+    openGatePassPrint(groups);
+  }
+
+  function printAllTodayGatePasses(){
+    const picked = collectGatePassRequestsToday();
+    if(!picked.length){
+      alert("No confirmed dispatches for today.");
+      return;
+    }
+    const groups = groupGatePassRequests(picked);
+    openGatePassPrint(groups);
   }
 
   function typePill(type){
@@ -1335,14 +1663,35 @@
     const todayKey = ymd(new Date());
     const chunks = [];
 
+    chunks.push(`
+      <div class="summaryBox" style="margin-bottom:12px">
+        <div class="line" style="justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:900">Gate Pass Printing</div>
+            <div class="small">Generate printable gate passes grouped by Driver + Date + Vehicle.</div>
+          </div>
+          <div class="line" style="gap:8px;flex-wrap:wrap">
+            <span class="badge">${selectedGatePassIds.size} selected</span>
+            <button class="primary" id="btnGenerateGatePass">Generate Gate Pass</button>
+            <button class="ok" id="btnPrintTodayGatePass">Print All for Today</button>
+            <button id="btnClearGatePassSelection">Clear Selection</button>
+          </div>
+        </div>
+      </div>
+    `);
+
     for(const d of dates){
       const key = ymd(d);
-      const list = filtered.filter(r=>ymd(new Date(r.StartDT))===key).sort((a,b)=>new Date(a.StartDT)-new Date(b.StartDT));
+      const list = filtered
+        .filter(r=>ymd(new Date(r.StartDT))===key)
+        .sort((a,b)=>new Date(a.StartDT)-new Date(b.StartDT));
+
       const groups = {};
       list.forEach(r=>{
         const gk = `${r.DriverCode||"Unassigned"}|${r.VehicleCode||"Unassigned"}`;
         (groups[gk] ||= []).push(r);
       });
+
       const groupHtml = Object.entries(groups).map(([gk,items])=>{
         const [driver, vehicle] = gk.split("|");
         return `<div class="dispatchGroup">
@@ -1350,17 +1699,70 @@
             <div style="font-weight:900">${escapeHtml(driver)} • ${escapeHtml(vehicle)}</div>
             <div class="small">${items.length} trip${items.length>1?"s":""}</div>
           </div>
-          <div class="dispatchItems">${items.map(r=>`<div class="dispatchItem click" data-trip="${escapeAttr(r.RequestID)}"><div class="small"><b>${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</b></div><div class="compactMain">${cardMainLine(r)}</div><div class="small" style="margin-top:4px">${tripStatusLabel(r)}${tripTimesHTML(r) ? " • " + escapeHtml(tripTimesHTML(r)) : ""}</div></div>`).join("")}</div>
+          <div class="dispatchItems">
+            ${items.map(r=>`
+              <div class="dispatchItem click" data-trip="${escapeAttr(r.RequestID)}">
+                <div class="line" style="justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:nowrap">
+                  <label class="line" style="gap:6px;align-items:center;cursor:pointer;flex:0 0 auto" onclick="event.stopPropagation()">
+                    <input
+                      type="checkbox"
+                      data-gp-check="${escapeAttr(r.RequestID)}"
+                      ${selectedGatePassIds.has(String(r.RequestID)) ? "checked" : ""}
+                    />
+                    <span class="small">Gate Pass</span>
+                  </label>
+                  <div class="small"><b>${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</b></div>
+                </div>
+                <div class="compactMain">${cardMainLine(r)}</div>
+                <div class="small" style="margin-top:4px">${tripStatusLabel(r)}${tripTimesHTML(r) ? " • " + escapeHtml(tripTimesHTML(r)) : ""}</div>
+              </div>
+            `).join("")}
+          </div>
         </div>`;
       }).join("") || `<div class="hint">No confirmed dispatches.</div>`;
-      chunks.push(`<div class="dispatchDay">
-        <div class="day ${key===todayKey?"today":""}" data-day="${key}" style="min-height:auto"><div class="dayHead"><div class="h">${d.toLocaleDateString(undefined,{weekday:"long"})}${key===todayKey ? " • Today" : ""}</div><div class="s">${d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}</div></div><div class="dayBody">${groupHtml}</div></div>
-      </div>`);
+
+      chunks.push(`
+        <div class="dispatchDay">
+          <div class="day ${key===todayKey?"today":""}" data-day="${key}" style="min-height:auto">
+            <div class="dayHead">
+              <div class="h">${d.toLocaleDateString(undefined,{weekday:"long"})}${key===todayKey ? " • Today" : ""}</div>
+              <div class="s">${d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}</div>
+            </div>
+            <div class="dayBody">${groupHtml}</div>
+          </div>
+        </div>
+      `);
     }
 
     wrap.innerHTML = chunks.join("");
-    wrap.querySelectorAll("[data-trip]").forEach(el=> el.addEventListener("click", (ev)=> { ev.stopPropagation(); openTripModal(el.dataset.trip); }));
-    wrap.querySelectorAll("[data-day]").forEach(el=> el.addEventListener("click", ()=> setSelectedDay(el.dataset.day)));
+
+    const btnGenerate = $("btnGenerateGatePass");
+    if(btnGenerate) btnGenerate.addEventListener("click", generateSelectedGatePasses);
+
+    const btnToday = $("btnPrintTodayGatePass");
+    if(btnToday) btnToday.addEventListener("click", printAllTodayGatePasses);
+
+    const btnClear = $("btnClearGatePassSelection");
+    if(btnClear) btnClear.addEventListener("click", clearGatePassSelection);
+
+    wrap.querySelectorAll("[data-gp-check]").forEach(el=>{
+      el.addEventListener("click", ev => ev.stopPropagation());
+      el.addEventListener("change", ()=>{
+        toggleGatePassSelection(el.dataset.gpCheck, el.checked);
+      });
+    });
+
+    wrap.querySelectorAll("[data-trip]").forEach(el=>
+      el.addEventListener("click", (ev)=> {
+        ev.stopPropagation();
+        openTripModal(el.dataset.trip);
+      })
+    );
+
+    wrap.querySelectorAll("[data-day]").forEach(el=>
+      el.addEventListener("click", ()=> setSelectedDay(el.dataset.day))
+    );
+
     highlightSelectedDays();
   }
 
