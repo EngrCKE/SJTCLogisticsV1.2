@@ -875,9 +875,10 @@
   function requestPersonnelForGatePass(r){
     const p = r.Payload || {};
     const installers = Array.isArray(p.Installers) ? p.Installers : [];
-    const fromInstallers = installers.map(x => String((x && (x.InstallerName || x.InstallerCode)) || "").trim()).filter(Boolean);
-    const fromCodes = Array.isArray(p.InstallerCodes) ? p.InstallerCodes.map(x => String(x || "").trim()) : [];
-    return uniqueNonEmpty([...fromInstallers, ...fromCodes]);
+    const fromNames = installers
+      .map(x => String((x && x.InstallerName) || "").trim())
+      .filter(Boolean);
+    return uniqueNonEmpty(fromNames);
   }
 
   function requestPurposeForGatePass(r){
@@ -962,12 +963,12 @@
 
   function gatePassSlipHTML(g){
     const itineraryHtml = g.itineraries.length
-      ? `<ul>${g.itineraries.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
-      : `<div class="blankLine">&nbsp;</div>`;
+      ? `<ul class="gpList">${g.itineraries.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+      : `<div class="gpLineFill">&nbsp;</div>`;
 
     const personnelHtml = g.personnel.length
-      ? `<ul>${g.personnel.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
-      : `<div class="blankLine">&nbsp;</div>`;
+      ? `<ul class="gpList">${g.personnel.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+      : `<div class="gpLineFill">&nbsp;</div>`;
 
     return `
       <div class="gpSlip">
@@ -976,48 +977,64 @@
           <div class="gpTitle">GATE PASS</div>
         </div>
 
-        <table class="gpTable">
-          <tr>
-            <td class="label">Date of Travel:</td>
-            <td class="value">${escapeHtml(g.dateLabel)}</td>
-            <td class="label">Time of Dispatch:</td>
-            <td class="value blank"></td>
-          </tr>
-          <tr>
-            <td class="label">Vehicle:</td>
-            <td class="value">${escapeHtml(g.vehicleLabel || g.vehicleCode || "")}</td>
-            <td class="label">Plate No.:</td>
-            <td class="value">${escapeHtml(g.plateNo || "")}</td>
-          </tr>
-          <tr>
-            <td class="label">Driver:</td>
-            <td class="value" colspan="3">${escapeHtml(g.driverLabel || g.driverCode || "")}</td>
-          </tr>
-          <tr>
-            <td class="label top">Itineraries:</td>
-            <td class="value top" colspan="3">${itineraryHtml}</td>
-          </tr>
-          <tr>
-            <td class="label top">Personnel:</td>
-            <td class="value top" colspan="3">${personnelHtml}</td>
-          </tr>
-          <tr>
-            <td class="label">Purpose:</td>
-            <td class="value" colspan="3">${escapeHtml(g.purposeText || "")}</td>
-          </tr>
-          <tr>
-            <td class="label">Remarks:</td>
-            <td class="value" colspan="3"></td>
-          </tr>
-          <tr>
-            <td class="label">Requested by:</td>
-            <td class="value" colspan="3">${escapeHtml(g.requestedByText || "")}</td>
-          </tr>
-          <tr>
-            <td class="label">Approved by:</td>
-            <td class="value" colspan="3"></td>
-          </tr>
-        </table>
+        <div class="gpBody">
+          <div class="gpTwoCol">
+            <div class="gpField inline">
+              <span class="gpLabel">Date of Travel:</span>
+              <span class="gpLine">${escapeHtml(g.dateLabel)}</span>
+            </div>
+            <div class="gpField inline">
+              <span class="gpLabel">Time of Dispatch:</span>
+              <span class="gpLine">&nbsp;</span>
+            </div>
+          </div>
+
+          <div class="gpTwoCol">
+            <div class="gpField inline">
+              <span class="gpLabel">Vehicle:</span>
+              <span class="gpLine">${escapeHtml(g.vehicleCode || "")}</span>
+            </div>
+            <div class="gpField inline">
+              <span class="gpLabel">Plate No.:</span>
+              <span class="gpLine">${escapeHtml(g.plateNo || "")}</span>
+            </div>
+          </div>
+
+          <div class="gpField inline">
+            <span class="gpLabel">Driver:</span>
+            <span class="gpLine">${escapeHtml(g.driverLabel || g.driverCode || "")}</span>
+          </div>
+
+          <div class="gpField block compact">
+            <div class="gpLabel">Itineraries:</div>
+            <div class="gpBox">${itineraryHtml}</div>
+          </div>
+
+          <div class="gpField block compact">
+            <div class="gpLabel">Personnel:</div>
+            <div class="gpBox">${personnelHtml}</div>
+          </div>
+
+          <div class="gpField inline">
+            <span class="gpLabel">Purpose:</span>
+            <span class="gpLine">${escapeHtml(g.purposeText || "")}</span>
+          </div>
+
+          <div class="gpField inline">
+            <span class="gpLabel">Remarks:</span>
+            <span class="gpLine">&nbsp;</span>
+          </div>
+
+          <div class="gpField inline">
+            <span class="gpLabel">Requested by:</span>
+            <span class="gpLine">${escapeHtml(g.requestedByText || "")}</span>
+          </div>
+
+          <div class="gpField block sign">
+            <div class="gpLabel">Approved by:</div>
+            <div class="gpSignLine"></div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -1034,101 +1051,142 @@
   <style>
     @page{
       size: Letter portrait;
-      margin: 0.35in;
+      margin: 0.32in;
     }
 
     *{ box-sizing:border-box; }
     body{
       margin:0;
       font-family: Arial, Helvetica, sans-serif;
-      color:#000;
+      color:#111;
       background:#fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     .sheet{
       display:grid;
       grid-template-columns: 1fr 1fr;
-      gap: 0.18in;
+      gap: 0.14in;
+      align-items:start;
     }
 
     .gpSlip{
-      border:1px solid #000;
+      border:1.2px solid #444;
+      border-radius:10px;
       padding:8px 10px;
-      height: 3.15in;
-      overflow:hidden;
+      min-height: 3.02in;
       page-break-inside: avoid;
       break-inside: avoid;
       display:flex;
       flex-direction:column;
+      background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
+      box-shadow: 0 0 0 1px rgba(0,0,0,.04) inset;
     }
 
     .gpHead{
       text-align:center;
       margin-bottom:6px;
+      padding-bottom:4px;
+      border-bottom:1px solid #bbb;
     }
 
-    .gpCompany{
+    .gpCompany,
+    .gpTitle,
+    .gpBody,
+    .gpLabel,
+    .gpLine,
+    .gpBox,
+    .gpList,
+    .gpList li,
+    .gpSignLine{
+      font-size:10.5px;
+      line-height:1.18;
+    }
+
+    .gpCompany,
+    .gpTitle{
       font-weight:700;
-      font-size:14px;
-      line-height:1.2;
+      letter-spacing:.2px;
     }
 
     .gpTitle{
+      margin-top:1px;
+    }
+
+    .gpBody{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      flex:1;
+    }
+
+    .gpTwoCol{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+
+    .gpField.inline{
+      display:flex;
+      align-items:flex-end;
+      gap:6px;
+      min-width:0;
+    }
+
+    .gpField.block{
+      display:block;
+    }
+
+    .gpLabel{
       font-weight:700;
-      font-size:14px;
-      margin-top:2px;
-      line-height:1.2;
+      white-space:nowrap;
+      flex:0 0 auto;
     }
 
-    .gpTable{
-      width:100%;
-      border-collapse:collapse;
-      font-size:11px;
-      table-layout:fixed;
+    .gpLine{
+      flex:1 1 auto;
+      min-width:0;
+      min-height:15px;
+      border-bottom:1px solid #555;
+      padding:0 2px 1px 2px;
     }
 
-    .gpTable td{
-      border:1px solid #000;
-      padding:4px 5px;
-      vertical-align:middle;
-      word-wrap:break-word;
-    }
-
-    .gpTable td.label{
-      width:18%;
-      font-weight:700;
-    }
-
-    .gpTable td.value{
-      width:32%;
-    }
-
-    .gpTable td.top{
-      vertical-align:top;
-    }
-
-    .gpTable td.blank{
+    .gpBox{
+      margin-top:1px;
       min-height:22px;
+      border:1px solid #777;
+      border-radius:6px;
+      padding:3px 6px;
+      background:#fff;
     }
 
-    .gpTable ul{
+    .gpField.compact .gpBox{
+      min-height:30px;
+    }
+
+    .gpList{
       margin:0;
-      padding-left:16px;
+      padding-left:14px;
     }
 
-    .gpTable li{
-      margin:0 0 2px 0;
-      line-height:1.2;
+    .gpList li{
+      margin:0 0 1px 0;
     }
 
-    .blankLine{
-      min-height:18px;
+    .gpLineFill{
+      min-height:14px;
     }
 
-    @media print{
-      .sheet{
-        grid-template-columns: 1fr 1fr;
-      }
+    .gpField.sign{
+      margin-top:auto;
+      padding-top:4px;
+    }
+
+    .gpSignLine{
+      margin-top:16px;
+      height:28px;
+      border-bottom:1px solid #555;
     }
   </style>
 </head>
