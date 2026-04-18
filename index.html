@@ -858,6 +858,25 @@
     return (BOOT && BOOT.drivers ? BOOT.drivers : []).find(d => d.DriverCode === code) || null;
   }
 
+  function formatPHMobile(raw){
+    const digits = String(raw || "").replace(/\D/g, "");
+    if(!digits) return "";
+    let local = digits;
+    if(local.length === 12 && local.startsWith("63")) local = "0" + local.slice(2);
+    if(local.length === 10 && local.startsWith("9")) local = "0" + local;
+    if(local.length === 11 && local.startsWith("09")) return `${local.slice(0,4)} ${local.slice(4,7)} ${local.slice(7,11)}`;
+    return String(raw || "").trim();
+  }
+
+  function driverDisplayByCode(code){
+    const d = getDriverByCode(code);
+    if(!d) return String(code || "").trim();
+    const name = String(d.DriverName || "").trim();
+    const phone = formatPHMobile(d.DriverPhone || d.DriverCode || code || "");
+    if(name && phone) return `${name} - ${phone}`;
+    return name || phone || String(code || "").trim();
+  }
+
   function plateNoFromVehicleCode(code){
     const v = getVehicleByCode(code);
     return String((v && (v.PlateNo || v.PlateNumber || "")) || "").trim();
@@ -941,20 +960,22 @@
       const personnel = uniqueNonEmpty(g.items.flatMap(requestPersonnelForGatePass));
       const purposes = uniqueNonEmpty(g.items.map(requestPurposeForGatePass));
       const requestedBy = uniqueNonEmpty(g.items.map(x => x.RequestedBy));
+      const remarks = uniqueNonEmpty(g.items.map(x => String(((x.Payload || {}).Notes) || "").trim()));
 
       return {
         dateKey: g.dateKey,
         dateLabel: new Date(g.dateKey + "T00:00:00").toLocaleDateString(undefined, {
           month:"short", day:"numeric", year:"numeric"
         }),
-        vehicleLabel: String((vehicle && vehicle.VehicleLabel) || g.vehicleCode || "").trim(),
+        vehicleLabel: String(g.vehicleCode || (vehicle && vehicle.VehicleCode) || "").trim(),
         plateNo: plateNoFromVehicleCode(g.vehicleCode),
-        driverLabel: String((driver && driver.DriverName) || g.driverCode || "").trim(),
+        driverLabel: driverDisplayByCode(g.driverCode),
         driverCode: g.driverCode,
         vehicleCode: g.vehicleCode,
         itineraries,
         personnel,
         purposeText: purposes.join(", "),
+        remarksText: remarks.join(", "),
         requestedByText: requestedBy.join(", "),
         items: g.items
       };
@@ -1022,7 +1043,7 @@
 
           <div class="gpField inline">
             <span class="gpLabel">Remarks:</span>
-            <span class="gpLine">&nbsp;</span>
+            <span class="gpLine">${escapeHtml(g.remarksText || "")}</span>
           </div>
 
           <div class="gpField inline">
@@ -1339,7 +1360,7 @@
     items.push(["Address", p.Address || p.Destination || "—"]);
     if(p.ContactNumber || r.Type === "Delivery") items.push(["Contact Number", p.ContactNumber || "—"]);
     items.push(["Vehicle", r.VehicleCode || "—"]);
-    items.push(["Driver", r.DriverCode || "—"]);
+    items.push(["Driver", driverDisplayByCode(r.DriverCode) || "—"]);
     items.push(["Installers", installerTextFromPayload(p)]);
     items.push(["Area", p.AreaClass || "—"]);
     items.push(["Trip", tripStatusLabel(r)]);
@@ -1448,7 +1469,7 @@
 
     box.innerHTML = `<div class="small" style="font-weight:900">Availability & Conflict Check</div>` +
       (warnings.length ? warnings.join("") : `<div class="small" style="margin-top:6px;color:#d6ffe9">No conflicts for the current selection.</div>`) +
-      `<div class="small" style="margin-top:10px"><b>Available Drivers:</b> ${escapeHtml(info.availableDrivers.map(x=>x.DriverCode).join(", ") || "None")}</div>` +
+      `<div class="small" style="margin-top:10px"><b>Available Drivers:</b> ${escapeHtml(info.availableDrivers.map(x=>driverDisplayByCode(x.DriverCode)).join(", ") || "None")}</div>` +
       `<div class="small" style="margin-top:4px"><b>Available Vehicles:</b> ${escapeHtml(info.availableVehicles.map(x=>x.VehicleCode).join(", ") || "None")}</div>` +
       `<div class="small" style="margin-top:4px"><b>Available Installers:</b> ${escapeHtml(info.availableInstallers.map(x=>x.InstallerName || x.InstallerCode).join(", ") || "None")}</div>`;
   }
@@ -1476,7 +1497,7 @@
         <div class="compactMeta">
           <span>🕒 ${escapeHtml(formatTimeRange(r.StartDT,r.EndDT))}</span>
           <span>${escapeHtml(tripTimesHTML(r))}</span>
-          <span>👤 ${escapeHtml(r.DriverCode||"—")}</span>
+          <span>👤 ${escapeHtml(driverDisplayByCode(r.DriverCode)||"—")}</span>
           <span>🚚 ${escapeHtml(r.VehicleCode||"—")}</span>
         </div>
       </div>
@@ -1544,7 +1565,7 @@
           <td>${escapeHtml(displayType(r.Type))}</td>
           <td>${escapeHtml(requestTitle(r))}</td>
           <td>${st.toLocaleString()}</td>
-          <td>${escapeHtml(r.DriverCode||"")}</td>
+          <td>${escapeHtml(driverDisplayByCode(r.DriverCode)||"")}</td>
           <td>${escapeHtml(r.VehicleCode||"")}</td>
         </tr>
       `;
@@ -1638,7 +1659,7 @@
 
       <div class="small" style="font-weight:900;margin-top:12px">Available Drivers</div>
       <div class="resourceList">
-        ${driversAvail.length ? driversAvail.map(d=>`<div class="resourceItem">${escapeHtml(d.DriverCode)} — ${escapeHtml(d.DriverName||"")}</div>`).join("") : `<div class="hint">No drivers available.</div>`}
+        ${driversAvail.length ? driversAvail.map(d=>`<div class="resourceItem">${escapeHtml(driverDisplayByCode(d.DriverCode))}</div>`).join("") : `<div class="hint">No drivers available.</div>`}
       </div>
 
       <div class="small" style="font-weight:900;margin-top:12px">Available Vehicles</div>
@@ -1754,7 +1775,7 @@
         const [driver, vehicle] = gk.split("|");
         return `<div class="dispatchGroup">
           <div class="dispatchHead">
-            <div style="font-weight:900">${escapeHtml(driver)} • ${escapeHtml(vehicle)}</div>
+            <div style="font-weight:900">${escapeHtml(driverDisplayByCode(driver))} • ${escapeHtml(vehicle)}</div>
             <div class="small">${items.length} trip${items.length>1?"s":""}</div>
           </div>
           <div class="dispatchItems">
@@ -1865,7 +1886,7 @@
 
     $("driverFilter").innerHTML =
       `<option value="ALL">All Drivers</option>` +
-      BOOT.drivers.map(d=>`<option value="${escapeAttr(d.DriverCode)}">${escapeHtml(d.DriverCode)} — ${escapeHtml(d.DriverName)}</option>`).join("");
+      BOOT.drivers.map(d=>`<option value="${escapeAttr(d.DriverCode)}">${escapeHtml(driverDisplayByCode(d.DriverCode))}</option>`).join("");
 
     $("vehicleFilter").innerHTML =
       `<option value="ALL">All Vehicles</option>` +
@@ -1880,7 +1901,7 @@
       `<option value="">(Unassigned)</option>` +
       BOOT.drivers
         .filter(d=>String(d.Active||"Y").toUpperCase()==="Y")
-        .map(d=>`<option value="${escapeAttr(d.DriverCode)}">${escapeHtml(d.DriverCode)} — ${escapeHtml(d.DriverName)}</option>`)
+        .map(d=>`<option value="${escapeAttr(d.DriverCode)}">${escapeHtml(driverDisplayByCode(d.DriverCode))}</option>`)
         .join("");
   }
 
